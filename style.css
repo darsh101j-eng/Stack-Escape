@@ -1,0 +1,388 @@
+/* ============================================================================
+   style.css — Stack Escape
+   Visual identity: "dusk sherbet" — a twilight-to-sunset sky behind a bright,
+   toy-like tower. Rounded display type carries the personality; UI chrome
+   stays quiet (glassy dark panels) so the gameplay colors stay the loudest
+   thing on screen.
+   ============================================================================ */
+
+:root {
+  --bg-twilight: #150f2e;
+  --panel: rgba(21, 15, 46, 0.82);
+  --panel-light: rgba(255, 255, 255, 0.06);
+  --border-soft: rgba(255, 255, 255, 0.12);
+
+  --coral: #ff6b6b;
+  --gold: #ffd23f;
+  --cyan: #4fd8ff;
+  --magenta: #ff3d81;
+  --mint: #3ddc97;
+  --violet: #b083ff;
+
+  --text: #fdf7ff;
+  --text-dim: rgba(253, 247, 255, 0.62);
+
+  --font-display: 'Baloo 2', 'Fredoka', ui-rounded, 'Segoe UI Rounded', 'Nunito', sans-serif;
+  --font-body: 'Nunito', 'Baloo 2', ui-rounded, 'Segoe UI', sans-serif;
+
+  --radius-lg: 26px;
+  --radius-md: 16px;
+  --radius-sm: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
+  background: #05030f;
+  color: var(--text);
+  font-family: var(--font-body);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+button {
+  font-family: var(--font-display);
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+#stage {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(120% 90% at 50% -10%, #2a1c55 0%, transparent 60%),
+    linear-gradient(180deg, #0c0820 0%, #05030f 100%);
+}
+
+#canvas-wrap {
+  position: relative;
+  width: 400px; height: 700px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--border-soft), 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 60px rgba(79, 216, 255, 0.08);
+  touch-action: none;
+  user-select: none;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%; height: 100%;
+  background: #0c0820;
+}
+
+/* ---------------------------------------------------------------------- */
+/* HUD                                                                     */
+/* ---------------------------------------------------------------------- */
+#hud {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  display: none;
+  flex-direction: column;
+  padding: max(12px, env(safe-area-inset-top)) 12px 0;
+  z-index: 5;
+}
+body.in-game #hud { display: flex; }
+
+.hud-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+
+.hud-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  backdrop-filter: blur(6px);
+}
+.hud-pill .icon { font-size: 13px; opacity: 0.85; }
+.hud-pill.coins { color: var(--gold); }
+.hud-pill.floor { color: var(--cyan); }
+
+#btn-pause {
+  pointer-events: all;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--panel); border: 1px solid var(--border-soft);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  backdrop-filter: blur(6px);
+}
+#btn-pause:active { transform: scale(0.92); }
+
+.hud-mid {
+  margin-top: 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+#hud-combo {
+  font-family: var(--font-display); font-weight: 800; font-size: 20px;
+  color: var(--gold); text-shadow: 0 0 12px rgba(255, 210, 63, 0.6);
+  min-height: 24px;
+}
+.combo-track {
+  width: 120px; height: 5px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12); overflow: hidden;
+}
+#hud-combo-bar {
+  height: 100%; width: 100%; transform-origin: left center;
+  background: linear-gradient(90deg, var(--gold), var(--coral));
+  transition: transform 0.1s linear;
+}
+
+#hud-powerups {
+  margin-top: 10px;
+  display: flex; justify-content: center; gap: 8px;
+}
+.powerup-chip {
+  position: relative; width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(10, 6, 26, 0.7); border: 1.5px solid var(--border-soft);
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.powerup-chip-fill {
+  position: absolute; inset: 0;
+  background: rgba(255, 255, 255, 0.18);
+  transform-origin: bottom center;
+  transform: scaleY(1);
+  transition: transform 0.1s linear;
+}
+.powerup-chip-icon {
+  position: relative; font-size: 12px; font-weight: 800; font-family: var(--font-display);
+}
+
+#hud-timer { display: none; } /* kept in DOM for future use; not shown by default to reduce HUD clutter */
+
+#mission-toast {
+  position: absolute; top: max(64px, env(safe-area-inset-top) + 52px); left: 50%;
+  transform: translate(-50%, -12px);
+  background: linear-gradient(135deg, var(--mint), #24b377);
+  color: #08321f; font-family: var(--font-display); font-weight: 800; font-size: 13px;
+  padding: 8px 16px; border-radius: 999px;
+  opacity: 0; pointer-events: none;
+  box-shadow: 0 8px 20px rgba(61, 220, 151, 0.35);
+  z-index: 6;
+}
+#mission-toast.show { animation: toast-pop 2.4s ease forwards; }
+@keyframes toast-pop {
+  0% { opacity: 0; transform: translate(-50%, -12px) scale(0.9); }
+  12% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -8px) scale(0.96); }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Screens / panels                                                       */
+/* ---------------------------------------------------------------------- */
+.screen {
+  position: absolute; inset: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(5, 3, 15, 0.55);
+  backdrop-filter: blur(10px);
+  opacity: 1; transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.screen.hidden { opacity: 0; pointer-events: none; transform: scale(1.02); }
+
+.panel {
+  width: 100%; max-width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: 26px 22px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+  max-height: 90%;
+  overflow-y: auto;
+}
+
+.game-title {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: clamp(30px, 8vw, 40px);
+  letter-spacing: 0.5px;
+  text-align: center;
+  line-height: 1.05;
+  background: linear-gradient(180deg, #fff 10%, var(--gold) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 6px 24px rgba(255, 210, 63, 0.25);
+  margin: 4px 0 0;
+}
+.game-subtitle {
+  font-size: 12.5px; color: var(--text-dim); text-align: center; margin-top: -8px;
+}
+
+.stats-row {
+  display: flex; gap: 10px; width: 100%;
+}
+.stat-box {
+  flex: 1; background: var(--panel-light); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm); padding: 10px 6px; text-align: center;
+}
+.stat-box .val { font-family: var(--font-display); font-weight: 800; font-size: 18px; color: var(--gold); }
+.stat-box .lbl { font-size: 10.5px; color: var(--text-dim); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.btn-primary {
+  width: 100%; padding: 15px 20px; border-radius: 999px;
+  background: linear-gradient(135deg, var(--coral), var(--magenta));
+  font-size: 18px; font-weight: 800; letter-spacing: 0.3px;
+  box-shadow: 0 12px 28px rgba(255, 61, 129, 0.35);
+  transition: transform 0.12s ease;
+}
+.btn-primary:active { transform: scale(0.97); }
+
+.btn-secondary {
+  width: 100%; padding: 12px 18px; border-radius: 999px;
+  background: var(--panel-light); border: 1px solid var(--border-soft);
+  font-size: 14.5px; font-weight: 700;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+.btn-secondary:active { transform: scale(0.97); }
+.btn-secondary.accent { color: var(--cyan); }
+
+.icon-row { display: flex; gap: 10px; width: 100%; }
+.icon-btn {
+  position: relative;
+  flex: 1; aspect-ratio: 1; border-radius: var(--radius-md);
+  background: var(--panel-light); border: 1px solid var(--border-soft);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font-size: 20px;
+}
+.icon-btn span.lbl { font-size: 10px; font-family: var(--font-body); font-weight: 700; color: var(--text-dim); }
+.icon-btn:active { transform: scale(0.94); }
+.badge-dot {
+  position: absolute; top: 6px; right: 10px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 8px var(--gold);
+}
+.badge-dot.hidden { display: none; }
+
+.close-x {
+  position: absolute; top: 14px; right: 14px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--panel-light); border: 1px solid var(--border-soft);
+  font-size: 15px; display: flex; align-items: center; justify-content: center;
+}
+
+.panel-header {
+  width: 100%; display: flex; align-items: center; justify-content: center;
+  position: relative;
+  font-family: var(--font-display); font-weight: 800; font-size: 20px;
+  padding-bottom: 2px;
+}
+
+/* --- Game over specifics ------------------------------------------------ */
+#go-newbest {
+  font-family: var(--font-display); font-weight: 800; font-size: 12.5px;
+  color: #08321f; background: linear-gradient(135deg, var(--gold), var(--mint));
+  padding: 5px 14px; border-radius: 999px;
+  box-shadow: 0 8px 18px rgba(255, 210, 63, 0.3);
+}
+#go-newbest.hidden { display: none; }
+#go-mission-note {
+  font-size: 12px; color: var(--mint); text-align: center;
+}
+#go-mission-note.hidden { display: none; }
+
+/* --- Shop ----------------------------------------------------------- */
+.shop-tabs { display: flex; gap: 6px; width: 100%; }
+.shop-tab {
+  flex: 1; padding: 9px 4px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: var(--panel-light); border: 1px solid var(--border-soft); color: var(--text-dim);
+}
+.shop-tab.active { background: linear-gradient(135deg, var(--cyan), #1b8fc0); color: #06202b; }
+
+.shop-coins-row { display: flex; align-items: center; gap: 6px; font-family: var(--font-display); font-weight: 800; color: var(--gold); font-size: 14px; }
+
+#shop-grid {
+  width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  max-height: 320px; overflow-y: auto; padding: 2px;
+}
+.shop-card {
+  background: var(--panel-light); border: 1px solid var(--border-soft); border-radius: var(--radius-md);
+  padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font-family: var(--font-body);
+}
+.shop-card.selected { border-color: var(--mint); box-shadow: 0 0 0 1px var(--mint); }
+.shop-card.locked .shop-price { color: var(--gold); }
+.shop-swatch { width: 40px; height: 40px; border-radius: 50%; box-shadow: 0 0 14px rgba(255, 255, 255, 0.18); }
+.shop-name { font-size: 11.5px; font-weight: 700; text-align: center; }
+.shop-price { font-size: 11px; color: var(--text-dim); font-weight: 700; }
+
+/* --- Missions --------------------------------------------------------- */
+#missions-list { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.mission-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel-light); border: 1px solid var(--border-soft); border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+.mission-row.claimed { opacity: 0.55; }
+.mission-info { flex: 1; }
+.mission-label { font-size: 12.5px; font-weight: 700; margin-bottom: 6px; }
+.mission-bar { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.mission-bar-fill { height: 100%; background: linear-gradient(90deg, var(--mint), var(--cyan)); }
+.mission-claim {
+  min-width: 46px; padding: 8px 10px; border-radius: 999px;
+  background: linear-gradient(135deg, var(--gold), var(--coral)); font-weight: 800; font-size: 12.5px;
+}
+.mission-claim:disabled { background: var(--panel-light); color: var(--text-dim); }
+
+/* --- Settings modal --------------------------------------------------- */
+.modal {
+  position: absolute; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5, 3, 15, 0.65); backdrop-filter: blur(8px);
+  transition: opacity 0.2s ease;
+}
+.modal.hidden { opacity: 0; pointer-events: none; }
+.setting-row {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 2px;
+}
+.toggle {
+  width: 46px; height: 26px; border-radius: 999px; background: rgba(255, 255, 255, 0.14);
+  position: relative; border: 1px solid var(--border-soft);
+}
+.toggle::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; transition: transform 0.18s ease;
+}
+.toggle.on { background: linear-gradient(135deg, var(--mint), #1f9a67); }
+.toggle.on::after { transform: translateX(20px); }
+
+/* --- Daily reward popup ------------------------------------------------- */
+.popup {
+  position: absolute; inset: 0; z-index: 25;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5, 3, 15, 0.7); backdrop-filter: blur(10px);
+  transition: opacity 0.2s ease;
+}
+.popup.hidden { opacity: 0; pointer-events: none; }
+.gift-icon { font-size: 46px; filter: drop-shadow(0 8px 18px rgba(255, 210, 63, 0.4)); }
+#daily-reward-amount {
+  font-family: var(--font-display); font-weight: 800; font-size: 30px; color: var(--gold);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Pause dim overlay on world                                              */
+/* ---------------------------------------------------------------------- */
+#screen-pause { background: rgba(5, 3, 15, 0.72); }
+
+/* ---------------------------------------------------------------------- */
+/* Small screens                                                           */
+/* ---------------------------------------------------------------------- */
+@media (max-width: 380px) {
+  .game-title { font-size: 30px; }
+  .panel { padding: 20px 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

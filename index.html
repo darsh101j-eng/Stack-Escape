@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#150f2e" />
+<meta name="description" content="Stack Escape — an endless mobile-first arcade climber. Climb the tower before the rising crusher catches you." />
+<title>Stack Escape</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+
+<script src="config.js" defer></script>
+<script src="utils.js" defer></script>
+<script src="storage.js" defer></script>
+<script src="audio.js" defer></script>
+<script src="effects.js" defer></script>
+<script src="player.js" defer></script>
+<script src="platform.js" defer></script>
+<script src="obstacles.js" defer></script>
+<script src="powerups.js" defer></script>
+<script src="ui.js" defer></script>
+<script src="game.js" defer></script>
+</head>
+<body>
+
+<div id="stage">
+  <div id="canvas-wrap">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- ---------------- HUD (gameplay only) ---------------- -->
+    <div id="hud">
+      <div class="hud-top">
+        <div class="hud-pill floor"><span class="icon">🏢</span><span id="hud-floor">0</span></div>
+        <button id="btn-pause" aria-label="Pause">⏸</button>
+        <div class="hud-pill coins"><span class="icon">🪙</span><span id="hud-coins">0</span></div>
+      </div>
+      <div class="hud-mid">
+        <div id="hud-combo"></div>
+        <div class="combo-track"><div id="hud-combo-bar"></div></div>
+      </div>
+      <div id="hud-powerups"></div>
+      <div id="hud-timer">0:00</div>
+    </div>
+    <div id="mission-toast"></div>
+
+    <!-- ---------------- Main menu ---------------- -->
+    <div id="screen-menu" class="screen">
+      <div class="panel">
+        <div style="font-size:36px;">🏙️</div>
+        <h1 class="game-title">STACK<br>ESCAPE</h1>
+        <p class="game-subtitle">Climb before the tower catches you.</p>
+        <div class="stats-row">
+          <div class="stat-box"><div class="val" id="menu-best-score">0</div><div class="lbl">Best Score</div></div>
+          <div class="stat-box"><div class="val" id="menu-best-floor">0</div><div class="lbl">Best Floor</div></div>
+          <div class="stat-box"><div class="val" id="menu-coins">0</div><div class="lbl">Coins</div></div>
+        </div>
+        <button id="btn-play" class="btn-primary">▲ Play</button>
+        <div class="icon-row">
+          <button id="btn-open-shop" class="icon-btn">🛍️<span class="lbl">Shop</span></button>
+          <button id="btn-open-missions" class="icon-btn">🎯<span class="lbl">Missions</span></button>
+          <button id="btn-daily" class="icon-btn">🎁<span class="lbl">Daily</span><span id="daily-badge" class="badge-dot hidden"></span></button>
+          <button id="btn-open-settings" class="icon-btn">⚙️<span class="lbl">Settings</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------- Pause ---------------- -->
+    <div id="screen-pause" class="screen hidden">
+      <div class="panel">
+        <div class="panel-header">Paused</div>
+        <button id="btn-resume" class="btn-primary">▶ Resume</button>
+        <button id="btn-restart-from-pause" class="btn-secondary">↻ Restart</button>
+        <button id="btn-home-from-pause" class="btn-secondary">🏠 Main Menu</button>
+      </div>
+    </div>
+
+    <!-- ---------------- Game over ---------------- -->
+    <div id="screen-gameover" class="screen hidden">
+      <div class="panel">
+        <div class="panel-header">Run Over</div>
+        <div id="go-newbest" class="hidden">🏆 New Best!</div>
+        <div class="stats-row">
+          <div class="stat-box"><div class="val" id="go-score">0</div><div class="lbl">Score</div></div>
+          <div class="stat-box"><div class="val" id="go-floor">0</div><div class="lbl">Floor</div></div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-box"><div class="val" id="go-coins">0</div><div class="lbl">Coins</div></div>
+          <div class="stat-box"><div class="val" id="go-combo">x1.0</div><div class="lbl">Best Combo</div></div>
+        </div>
+        <div id="go-mission-note" class="hidden"></div>
+        <button id="btn-retry" class="btn-primary">↻ Try Again</button>
+        <button id="btn-gameover-shop" class="btn-secondary accent">🛍️ Shop</button>
+        <button id="btn-home-from-gameover" class="btn-secondary">🏠 Main Menu</button>
+      </div>
+    </div>
+
+    <!-- ---------------- Shop ---------------- -->
+    <div id="screen-shop" class="screen hidden">
+      <div class="panel">
+        <button id="btn-close-shop" class="close-x">✕</button>
+        <div class="panel-header">Shop</div>
+        <div class="shop-coins-row">🪙 <span id="shop-coins">0</span></div>
+        <div class="shop-tabs">
+          <button class="shop-tab active" data-tab="skins">Skins</button>
+          <button class="shop-tab" data-tab="trails">Trails</button>
+          <button class="shop-tab" data-tab="fx">Jump FX</button>
+          <button class="shop-tab" data-tab="themes">Themes</button>
+        </div>
+        <div id="shop-grid"></div>
+      </div>
+    </div>
+
+    <!-- ---------------- Missions ---------------- -->
+    <div id="screen-missions" class="screen hidden">
+      <div class="panel">
+        <button id="btn-close-missions" class="close-x">✕</button>
+        <div class="panel-header">Daily Missions</div>
+        <div id="missions-list"></div>
+      </div>
+    </div>
+
+    <!-- ---------------- Settings modal ---------------- -->
+    <div id="modal-settings" class="modal hidden">
+      <div class="panel">
+        <button id="btn-close-settings" class="close-x">✕</button>
+        <div class="panel-header">Settings</div>
+        <div class="setting-row"><span>Sound Effects</span><button id="toggle-sfx" class="toggle" aria-label="Toggle sound effects"></button></div>
+        <div class="setting-row"><span>Music</span><button id="toggle-music" class="toggle" aria-label="Toggle music"></button></div>
+        <button id="btn-reset-progress" class="btn-secondary" style="margin-top:10px;color:var(--coral);">Reset Progress</button>
+      </div>
+    </div>
+
+    <!-- ---------------- Daily reward popup ---------------- -->
+    <div id="popup-daily" class="popup hidden">
+      <div class="panel">
+        <div class="gift-icon">🎁</div>
+        <div class="panel-header" style="font-size:17px;">Daily Reward</div>
+        <div id="daily-streak-text" class="game-subtitle">Day 1 streak</div>
+        <div id="daily-reward-amount">50</div>
+        <button id="btn-claim-daily" class="btn-primary">Claim</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
