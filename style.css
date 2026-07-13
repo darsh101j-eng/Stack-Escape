@@ -194,28 +194,26 @@ body.in-game #hud { display: flex; }
 .screen.hidden { opacity: 0; pointer-events: none; transform: scale(1.02); }
 
 .panel{
+  width:100%;
+  max-width:320px;
 
-width:100%;
-max-width:320px;
+  background: var(--panel);
 
-background: var(--panel);
+  backdrop-filter: blur(16px);
 
-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.15);
 
-border:1px solid rgba(255,255,255,.15);
+  border-radius:28px;
 
-border-radius:28px;
+  padding:26px 22px;
 
-padding:26px 22px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
 
-display:flex;
-flex-direction:column;
-align-items:center;
-gap:14px;
-
-box-shadow:
-0 20px 60px rgba(0,0,0,.35);
-
+  box-shadow:
+    0 20px 60px rgba(0,0,0,.35);
 }
 
 .game-title {
@@ -428,6 +426,5 @@ box-shadow:
     filter:none;
 }
 
-}
 
 
