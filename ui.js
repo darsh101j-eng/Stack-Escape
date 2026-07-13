@@ -63,26 +63,7 @@ const UI = {
   },
 
   _bindStatic() {
-    const on = (id, fn) => {
-    const e = document.getElementById(id);
-    if (!e) return;
-
-    let pointerHandled = false;
-
-    e.addEventListener("pointerdown", (ev) => {
-        pointerHandled = true;
-        ev.preventDefault();
-        fn(ev);
-    }, { passive: false });
-
-    e.addEventListener("click", (ev) => {
-        if (pointerHandled) {
-            pointerHandled = false;
-            return;
-        }
-        fn(ev);
-    });
-};
+    const on = (id, fn) => { const e = document.getElementById(id); if (e) e.addEventListener('click', fn); };
 
     on('btn-play', () => Game.startGame());
     on('btn-open-shop', () => this.openShop());
@@ -159,28 +140,50 @@ const UI = {
   },
 
   // --- HUD (gameplay) --------------------------------------------------
+  _hudPrev: { floor: null, coins: null, comboText: null, timeText: null },
+  _hudChipEls: [], // cached child refs, avoids querySelector per chip per frame
+
   updateHUD({ floor, coins, comboMultiplier, comboFrac, seconds, powerups }) {
-    this.el.hudFloor.textContent = floor;
-    this.el.hudCoins.textContent = Utils.formatNumber(coins);
-    this.el.hudCombo.textContent = comboMultiplier > 1 ? `x${comboMultiplier.toFixed(1)}` : '';
+    const prev = this._hudPrev;
+
+    if (prev.floor !== floor) { this.el.hudFloor.textContent = floor; prev.floor = floor; }
+    if (prev.coins !== coins) { this.el.hudCoins.textContent = Utils.formatNumber(coins); prev.coins = coins; }
+
+    const comboText = comboMultiplier > 1 ? `x${comboMultiplier.toFixed(1)}` : '';
+    if (prev.comboText !== comboText) { this.el.hudCombo.textContent = comboText; prev.comboText = comboText; }
     this.el.hudComboBar.style.transform = `scaleX(${Utils.clamp(comboFrac, 0, 1)})`;
-    this.el.hudTimer.textContent = Utils.formatTime(seconds);
+
+    // Hidden by CSS today, but formatTime()+textContent is still real work —
+    // only pay for it when the displayed second actually ticks over.
+    const timeText = Utils.formatTime(seconds);
+    if (prev.timeText !== timeText) { this.el.hudTimer.textContent = timeText; prev.timeText = timeText; }
 
     const container = this.el.hudPowerups;
+    const cache = this._hudChipEls;
     const needed = powerups.length;
-    while (container.children.length < needed) {
+    while (cache.length < needed) {
       const chip = document.createElement('div');
       chip.className = 'powerup-chip';
-      chip.innerHTML = '<div class="powerup-chip-fill"></div><span class="powerup-chip-icon"></span>';
+      const fill = document.createElement('div'); fill.className = 'powerup-chip-fill';
+      const icon = document.createElement('span'); icon.className = 'powerup-chip-icon';
+      chip.appendChild(fill); chip.appendChild(icon);
       container.appendChild(chip);
+      cache.push({ chip, fill, icon, kind: null });
     }
-    while (container.children.length > needed) container.removeChild(container.lastChild);
-    powerups.forEach((p, i) => {
-      const chip = container.children[i];
-      chip.dataset.kind = p.kind;
-      chip.querySelector('.powerup-chip-fill').style.transform = `scaleY(${p.frac})`;
-      chip.querySelector('.powerup-chip-icon').textContent = POWERUP_EMOJI[p.kind] || '★';
-    });
+    while (cache.length > needed) {
+      const entry = cache.pop();
+      container.removeChild(entry.chip);
+    }
+    for (let i = 0; i < needed; i++) {
+      const p = powerups[i];
+      const entry = cache[i];
+      if (entry.kind !== p.kind) {
+        entry.kind = p.kind;
+        entry.chip.dataset.kind = p.kind;
+        entry.icon.textContent = POWERUP_EMOJI[p.kind] || '★';
+      }
+      entry.fill.style.transform = `scaleY(${p.frac})`;
+    }
   },
 
   flashMissionToast(text) {

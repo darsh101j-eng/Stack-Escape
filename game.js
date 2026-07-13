@@ -11,6 +11,18 @@ const POWERUP_LABEL = {
   slowMotion: 'Slow-Mo!', superJump: 'Super Jump!', speedBoost: 'Speed Boost!'
 };
 
+// Compacts an array in place, dropping entries where `.dead` is true.
+// Used instead of Array#filter in the per-frame cleanup pass so we don't
+// allocate (and immediately discard) a brand-new array 60 times a second —
+// a real source of GC pauses/stutter on lower-end mobile devices.
+function removeDead(arr) {
+  let write = 0;
+  for (let read = 0; read < arr.length; read++) {
+    if (!arr[read].dead) arr[write++] = arr[read];
+  }
+  arr.length = write;
+}
+
 const Game = {
   state: 'menu', // 'menu' | 'playing' | 'paused' | 'gameover'
 
@@ -20,8 +32,13 @@ const Game = {
     UI.init();
     this.setupCanvas();
     this.resizeStage();
-    window.addEventListener('resize', () => this.resizeStage());
-    window.addEventListener('orientationchange', () => this.resizeStage());
+    const queueResize = () => {
+      if (this._resizeQueued) return;
+      this._resizeQueued = true;
+      requestAnimationFrame(() => { this._resizeQueued = false; this.resizeStage(); });
+    };
+    window.addEventListener('resize', queueResize);
+    window.addEventListener('orientationchange', queueResize);
 
     this.player = new Player();
     this.platforms = []; this.obstacles = []; this.collectibles = []; this.powerupPickups = [];
@@ -76,105 +93,48 @@ const Game = {
       if (['ArrowRight', 'KeyD'].includes(e.code)) this.input.right = false;
     });
 
-    const wrap = document.getElementById('canvas-wrap');
+    this.setupTouchZones();
+  },
 
-let activeSide = null;
+  // Three fixed, fully invisible full-height zones (30% / 40% / 30%) laid
+  // over the canvas: left/right hold to move, middle tap to jump. Built on
+  // the Pointer Events API so touch, mouse and pen all share one code path
+  // (no separate touchstart/mousedown handling) and CSS `touch-action: none`
+  // on the zones (see style.css) does the scroll/zoom suppression for free —
+  // no preventDefault() needed on the hot input path, which keeps the
+  // browser's compositor free to handle touches without blocking on JS.
+  setupTouchZones() {
+    const layer = document.getElementById('touch-controls');
+    if (!layer) return;
+    const zones = layer.querySelectorAll('.touch-zone');
+    const activePointers = new Map(); // pointerId -> zone element
 
-const updateInput = (x, y, pressed) => {
-  if (this.state !== "playing") return;
-    const rect = wrap.getBoundingClientRect();
+    const setHeld = (zoneEl, held) => {
+      const kind = zoneEl.dataset.zone;
+      if (kind === 'left') this.input.left = held;
+      else if (kind === 'right') this.input.right = held;
+    };
 
-    const relX = (x - rect.left) / rect.width;
-    
-    // Only use the bottom 30% for mobile controls
+    const release = e => {
+      const zoneEl = activePointers.get(e.pointerId);
+      if (!zoneEl) return;
+      activePointers.delete(e.pointerId);
+      setHeld(zoneEl, false);
+    };
 
-    // Left 30%
-    if (relX < 0.30) {
-        this.input.left = pressed;
-        this.input.right = false;
-        activeSide = "left";
-    }
+    zones.forEach(zoneEl => {
+      zoneEl.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        activePointers.set(e.pointerId, zoneEl);
+        if (zoneEl.dataset.zone === 'mid') this.player.requestJump();
+        else setHeld(zoneEl, true);
+        if (zoneEl.setPointerCapture) { try { zoneEl.setPointerCapture(e.pointerId); } catch (err) {} }
+      });
+      zoneEl.addEventListener('pointerup', release);
+      zoneEl.addEventListener('pointercancel', release);
+    });
+  },
 
-    // Right 30%
-    else if (relX > 0.70) {
-        this.input.right = pressed;
-        this.input.left = false;
-        activeSide = "right";
-    }
-
-    // Middle 40%
-    else {
-        this.input.left = false;
-        this.input.right = false;
-
-        if (pressed) {
-            this.player.requestJump();
-        }
-
-        activeSide = null;
-    }
-};
-
-// Mobile
-wrap.addEventListener("touchstart", e => {
-
-    // Ignore touches on UI elements
-    if (this.state !== "playing") return;
-
-    e.preventDefault();
-
-    const t = e.changedTouches[0];
-    updateInput(t.clientX, t.clientY, true);
-
-}, { passive: false });
-
-wrap.addEventListener("touchmove", e => {
-
-    if (this.state !== "playing") return;
-
-    e.preventDefault();
-
-    const t = e.changedTouches[0];
-    updateInput(t.clientX, t.clientY, true);
-
-}, { passive: false });
-
-wrap.addEventListener("touchend", e => {
-
-    if (this.state !== "playing") return;
-
-    e.preventDefault();
-
-    this.input.left = false;
-    this.input.right = false;
-    activeSide = null;
-
-}, { passive: false });
-
-wrap.addEventListener("touchcancel", e => {
-    e.preventDefault();
-    this.input.left = false;
-    this.input.right = false;
-    activeSide = null;
-}, { passive:false });
-
-// Desktop mouse (unchanged behaviour)
-wrap.addEventListener("mousedown", e => {
-    updateInput(e.clientX, e.clientY, true);
-});
-
-window.addEventListener("mousemove", e => {
-    if (e.buttons) {
-        updateInput(e.clientX, e.clientY, true);
-    }
-});
-
-window.addEventListener("mouseup", () => {
-    this.input.left = false;
-    this.input.right = false;
-    activeSide = null;
-});
-  },    
   // --- State transitions ------------------------------------------------
   startGame() {
     SoundManager.init(); SoundManager.resume();
@@ -430,10 +390,10 @@ window.addEventListener("mouseup", () => {
   },
 
   cleanup() {
-    this.platforms = this.platforms.filter(p => !p.dead);
-    this.obstacles = this.obstacles.filter(o => !o.dead);
-    this.collectibles = this.collectibles.filter(c => !c.dead);
-    this.powerupPickups = this.powerupPickups.filter(p => !p.dead);
+    removeDead(this.platforms);
+    removeDead(this.obstacles);
+    removeDead(this.collectibles);
+    removeDead(this.powerupPickups);
   },
 
   registerLanding() {
@@ -609,9 +569,15 @@ window.addEventListener("mouseup", () => {
   drawBackground() {
     const ctx = this.ctx;
     const theme = this.getSelectedTheme();
-    const g = ctx.createLinearGradient(0, 0, 0, CONFIG.VIEW_HEIGHT);
-    g.addColorStop(0, theme.sky[0]); g.addColorStop(0.55, theme.sky[1]); g.addColorStop(1, theme.sky[2]);
-    ctx.fillStyle = g;
+    // The gradient only actually changes when the equipped theme changes, so
+    // rebuild it only then rather than allocating a fresh CanvasGradient on
+    // every single frame.
+    if (!this._skyGradCache || this._skyGradCache.id !== theme.id) {
+      const g = ctx.createLinearGradient(0, 0, 0, CONFIG.VIEW_HEIGHT);
+      g.addColorStop(0, theme.sky[0]); g.addColorStop(0.55, theme.sky[1]); g.addColorStop(1, theme.sky[2]);
+      this._skyGradCache = { id: theme.id, gradient: g };
+    }
+    ctx.fillStyle = this._skyGradCache.gradient;
     ctx.fillRect(0, 0, CONFIG.WORLD_WIDTH, CONFIG.VIEW_HEIGHT);
 
     if (!this.clouds) {

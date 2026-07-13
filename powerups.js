@@ -182,15 +182,16 @@ const PowerupManager = {
 
   isActive(kind) { return !!this.active[kind]; },
 
+  _mods: { speedBoost: false, superJump: false, shield: false, doubleCoins: false, magnet: false, slowMotion: false },
   getMods() {
-    return {
-      speedBoost: this.isActive('speedBoost'),
-      superJump: this.isActive('superJump'),
-      shield: this.hasShield,
-      doubleCoins: this.isActive('doubleCoins'),
-      magnet: this.isActive('magnet'),
-      slowMotion: this.isActive('slowMotion')
-    };
+    const m = this._mods;
+    m.speedBoost = this.isActive('speedBoost');
+    m.superJump = this.isActive('superJump');
+    m.shield = this.hasShield;
+    m.doubleCoins = this.isActive('doubleCoins');
+    m.magnet = this.isActive('magnet');
+    m.slowMotion = this.isActive('slowMotion');
+    return m;
   },
 
   // For HUD chips: array of { kind, frac } where frac is remaining life (0..1).

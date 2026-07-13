@@ -73,10 +73,30 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 #game-canvas {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: 100%; height: 100%;
   background: #0c0820;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Touch controls — invisible, full-height, 30% / 40% / 30% zones.         */
+/* z-index sits above the canvas but below the HUD (5) and screens (10+),  */
+/* so the pause button and every menu/modal stay fully clickable.          */
+/* ---------------------------------------------------------------------- */
+#touch-controls {
+  position: absolute; inset: 0;
+  z-index: 2;
+  display: flex;
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+}
+.touch-zone {
+  height: 100%;
+  background: transparent; /* fully invisible, no artwork */
+  -webkit-tap-highlight-color: transparent;
+}
+.touch-zone.zone-left,
+.touch-zone.zone-right { flex: 0 0 30%; }
+.touch-zone.zone-mid   { flex: 0 0 40%; }
 
 /* ---------------------------------------------------------------------- */
 /* HUD                                                                     */
@@ -137,6 +157,7 @@ body.in-game #hud { display: flex; }
   height: 100%; width: 100%; transform-origin: left center;
   background: linear-gradient(90deg, var(--gold), var(--coral));
   transition: transform 0.1s linear;
+  will-change: transform;
 }
 
 #hud-powerups {
@@ -155,6 +176,7 @@ body.in-game #hud { display: flex; }
   transform-origin: bottom center;
   transform: scaleY(1);
   transition: transform 0.1s linear;
+  will-change: transform;
 }
 .powerup-chip-icon {
   position: relative; font-size: 12px; font-weight: 800; font-family: var(--font-display);
@@ -193,64 +215,31 @@ body.in-game #hud { display: flex; }
 }
 .screen.hidden { opacity: 0; pointer-events: none; transform: scale(1.02); }
 
-.panel{
-  width:100%;
-  max-width:320px;
-
+.panel {
+  width: 100%; max-width: 320px;
   background: var(--panel);
-
-  backdrop-filter: blur(16px);
-
-  border:1px solid rgba(255,255,255,.15);
-
-  border-radius:28px;
-
-  padding:26px 22px;
-
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:14px;
-
-  box-shadow:
-    0 20px 60px rgba(0,0,0,.35);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: 26px 22px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+  max-height: 90%;
+  overflow-y: auto;
 }
 
 .game-title {
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: clamp(42px, 9vw, 58px);
-  letter-spacing: 2px;
+  font-family: var(--font-display); font-weight: 800;
+  font-size: clamp(30px, 8vw, 40px);
+  letter-spacing: 0.5px;
   text-align: center;
-  line-height: 0.95;
-
-  background: linear-gradient(
-      180deg,
-      #ffffff 0%,
-      #ffe37d 40%,
-      #ffc83d 100%
-  );
-
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-
-  text-shadow:
-      0 0 18px rgba(255,210,63,.35),
-      0 10px 28px rgba(0,0,0,.35);
-
-  margin-top: 10px;
-  margin-bottom: 8px;
-
-  animation: logoFloat 3.5s ease-in-out infinite;
+  line-height: 1.05;
+  background: linear-gradient(180deg, #fff 10%, var(--gold) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 6px 24px rgba(255, 210, 63, 0.25);
+  margin: 4px 0 0;
 }
-.game-subtitle{
-    font-size:15px;
-    color:rgba(255,255,255,.82);
-    text-align:center;
-    letter-spacing:1px;
-    margin-top:-6px;
-    margin-bottom:12px;
+.game-subtitle {
+  font-size: 12.5px; color: var(--text-dim); text-align: center; margin-top: -8px;
 }
 
 .stats-row {
@@ -310,6 +299,66 @@ body.in-game #hud { display: flex; }
   position: relative;
   font-family: var(--font-display); font-weight: 800; font-size: 20px;
   padding-bottom: 2px;
+}
+
+/* --- Main menu — title screen treatment ---------------------------------
+   Distinct from the pause/gameover/shop modals: no dark blurred card, no
+   backdrop-filter. The animated sky + clouds already drawn on the canvas
+   show through the top of the screen; a gradient panel anchored to the
+   bottom carries the title, stats and actions, like a mobile game's title
+   screen rather than an in-game pause card. */
+.screen.screen-hero {
+  align-items: flex-end;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.screen.screen-hero .hero-content {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 62%;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  gap: 12px;
+  padding: 24px 24px calc(26px + env(safe-area-inset-bottom));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: linear-gradient(180deg,
+    rgba(5, 3, 15, 0) 0%,
+    rgba(9, 6, 24, 0.5) 26%,
+    rgba(7, 4, 20, 0.87) 55%,
+    #08051a 100%);
+}
+.hero-badge {
+  font-family: var(--font-display); font-weight: 700; font-size: 11.5px;
+  letter-spacing: 0.1em; color: var(--gold); text-transform: uppercase;
+  background: rgba(255, 210, 63, 0.12);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  padding: 5px 14px; border-radius: 999px;
+  animation: hero-badge-float 3.2s ease-in-out infinite;
+}
+.hero-title {
+  margin-top: 0;
+  font-size: clamp(36px, 12vw, 50px);
+  animation: hero-title-glow 3.6s ease-in-out infinite;
+}
+.hero-stats .stat-box { background: rgba(255, 255, 255, 0.05); }
+.btn-hero-play {
+  font-size: 19px; letter-spacing: 0.4px; padding: 17px 20px;
+  box-shadow: 0 14px 34px rgba(255, 61, 129, 0.45);
+  animation: hero-play-pulse 2.4s ease-in-out infinite;
+}
+@keyframes hero-badge-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes hero-title-glow {
+  0%, 100% { filter: drop-shadow(0 6px 16px rgba(255, 210, 63, 0.2)); }
+  50% { filter: drop-shadow(0 10px 30px rgba(255, 210, 63, 0.45)); }
+}
+@keyframes hero-play-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.025); }
 }
 
 /* --- Game over specifics ------------------------------------------------ */
@@ -420,11 +469,3 @@ body.in-game #hud { display: flex; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
-
-   body.in-game #game-canvas{
-    opacity:1;
-    filter:none;
-}
-
-
-

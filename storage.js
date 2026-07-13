@@ -183,13 +183,18 @@ const Storage = {
   updateMissionProgress(statBag) {
     const d = this.get();
     let anyNewlyCompleted = false;
+    let changed = false;
     for (const m of d.missions.list) {
       if (m.claimed) continue;
       const val = statBag[m.stat] || 0;
-      m.progress = Math.max(m.progress, Math.min(val, m.target));
-      if (!m.completed && m.progress >= m.target) { m.completed = true; anyNewlyCompleted = true; }
+      const newProgress = Math.max(m.progress, Math.min(val, m.target));
+      if (newProgress !== m.progress) { m.progress = newProgress; changed = true; }
+      if (!m.completed && m.progress >= m.target) { m.completed = true; anyNewlyCompleted = true; changed = true; }
     }
-    this.save();
+    // Skip the synchronous localStorage write (called every ~0.5s during a
+    // run) when nothing actually moved — avoids a JSON.stringify + disk
+    // write hitch for no reason on lower-end devices.
+    if (changed) this.save();
     return anyNewlyCompleted;
   },
 

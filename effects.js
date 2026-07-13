@@ -43,13 +43,14 @@ const Effects = {
   // --- Screen shake --------------------------------------------------
   addShake(amount) { this.shakeTrauma = Utils.clamp(this.shakeTrauma + amount, 0, 1); },
 
+  _shakeOffset: { x: 0, y: 0, rot: 0 },
   getShakeOffset() {
     const t = this.shakeTrauma * this.shakeTrauma;
-    return {
-      x: (Math.random() * 2 - 1) * 10 * t,
-      y: (Math.random() * 2 - 1) * 10 * t,
-      rot: (Math.random() * 2 - 1) * 0.06 * t
-    };
+    const o = this._shakeOffset;
+    o.x = (Math.random() * 2 - 1) * 10 * t;
+    o.y = (Math.random() * 2 - 1) * 10 * t;
+    o.rot = (Math.random() * 2 - 1) * 0.06 * t;
+    return o;
   },
 
   // --- Screen flash ----------------------------------------------------

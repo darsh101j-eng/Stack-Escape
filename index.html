@@ -26,12 +26,22 @@
 <script src="game.js" defer></script>
 </head>
 <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>eruda.init();</script> 
+<script>eruda.init();</script>
 <body>
 
 <div id="stage">
   <div id="canvas-wrap">
     <canvas id="game-canvas"></canvas>
+
+    <!-- ---------------- Touch controls (invisible, full-height) ----------------
+         30% left = move left, 40% middle = jump, 30% right = move right.
+         Sits above the canvas but below the HUD/screens, so menus, the pause
+         button and every modal remain fully clickable. -->
+    <div id="touch-controls" aria-hidden="true">
+      <div class="touch-zone zone-left" data-zone="left"></div>
+      <div class="touch-zone zone-mid" data-zone="mid"></div>
+      <div class="touch-zone zone-right" data-zone="right"></div>
+    </div>
 
     <!-- ---------------- HUD (gameplay only) ---------------- -->
     <div id="hud">
@@ -49,18 +59,18 @@
     </div>
     <div id="mission-toast"></div>
 
-    <!-- ---------------- Main menu ---------------- -->
-    <div id="screen-menu" class="screen">
-      <div class="panel">
-        <div style="font-size:36px;">🏙️</div>
-        <h1 class="game-title">STACK<br>ESCAPE</h1>
+    <!-- ---------------- Main menu (title screen) ---------------- -->
+    <div id="screen-menu" class="screen screen-hero">
+      <div class="hero-content">
+        <div class="hero-badge">✦ Endless Tower Climb ✦</div>
+        <h1 class="game-title hero-title">STACK<br>ESCAPE</h1>
         <p class="game-subtitle">Climb before the tower catches you.</p>
-        <div class="stats-row">
+        <div class="stats-row hero-stats">
           <div class="stat-box"><div class="val" id="menu-best-score">0</div><div class="lbl">Best Score</div></div>
           <div class="stat-box"><div class="val" id="menu-best-floor">0</div><div class="lbl">Best Floor</div></div>
           <div class="stat-box"><div class="val" id="menu-coins">0</div><div class="lbl">Coins</div></div>
         </div>
-        <button id="btn-play" class="btn-primary">▲ Play</button>
+        <button id="btn-play" class="btn-primary btn-hero-play">▲ &nbsp;PLAY</button>
         <div class="icon-row">
           <button id="btn-open-shop" class="icon-btn">🛍️<span class="lbl">Shop</span></button>
           <button id="btn-open-missions" class="icon-btn">🎯<span class="lbl">Missions</span></button>
