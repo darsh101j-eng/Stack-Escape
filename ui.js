@@ -63,7 +63,26 @@ const UI = {
   },
 
   _bindStatic() {
-    const on = (id, fn) => { const e = document.getElementById(id); if (e) e.addEventListener('click', fn); };
+    const on = (id, fn) => {
+    const e = document.getElementById(id);
+    if (!e) return;
+
+    let pointerHandled = false;
+
+    e.addEventListener("pointerdown", (ev) => {
+        pointerHandled = true;
+        ev.preventDefault();
+        fn(ev);
+    }, { passive: false });
+
+    e.addEventListener("click", (ev) => {
+        if (pointerHandled) {
+            pointerHandled = false;
+            return;
+        }
+        fn(ev);
+    });
+};
 
     on('btn-play', () => Game.startGame());
     on('btn-open-shop', () => this.openShop());
