@@ -232,8 +232,13 @@ body.in-game #hud { display: flex; }
 
   animation: logoFloat 3.5s ease-in-out infinite;
 }
-.game-subtitle {
-  font-size: 12.5px; color: var(--text-dim); text-align: center; margin-top: -8px;
+.game-subtitle{
+    font-size:15px;
+    color:rgba(255,255,255,.82);
+    text-align:center;
+    letter-spacing:1px;
+    margin-top:-6px;
+    margin-bottom:12px;
 }
 
 .stats-row {
@@ -402,4 +407,19 @@ body.in-game #hud { display: flex; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+@keyframes logoFloat{
+
+0%{
+transform:translateY(0px);
+}
+
+50%{
+transform:translateY(-8px);
+}
+
+100%{
+transform:translateY(0px);
+}
+
 }
