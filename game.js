@@ -81,18 +81,12 @@ const Game = {
 let activeSide = null;
 
 const updateInput = (x, y, pressed) => {
+  if (this.state !== "playing") return;
     const rect = wrap.getBoundingClientRect();
 
     const relX = (x - rect.left) / rect.width;
-    const relY = (y - rect.top) / rect.height;
-
+    
     // Only use the bottom 30% for mobile controls
-    if (relY < 0.70) {
-        this.input.left = false;
-        this.input.right = false;
-        activeSide = null;
-        return;
-    }
 
     // Left 30%
     if (relX < 0.30) {
@@ -123,23 +117,39 @@ const updateInput = (x, y, pressed) => {
 
 // Mobile
 wrap.addEventListener("touchstart", e => {
+
+    // Ignore touches on UI elements
+    if (this.state !== "playing") return;
+
     e.preventDefault();
+
     const t = e.changedTouches[0];
     updateInput(t.clientX, t.clientY, true);
-}, { passive:false });
+
+}, { passive: false });
 
 wrap.addEventListener("touchmove", e => {
+
+    if (this.state !== "playing") return;
+
     e.preventDefault();
+
     const t = e.changedTouches[0];
     updateInput(t.clientX, t.clientY, true);
-}, { passive:false });
+
+}, { passive: false });
 
 wrap.addEventListener("touchend", e => {
+
+    if (this.state !== "playing") return;
+
     e.preventDefault();
+
     this.input.left = false;
     this.input.right = false;
     activeSide = null;
-}, { passive:false });
+
+}, { passive: false });
 
 wrap.addEventListener("touchcancel", e => {
     e.preventDefault();
