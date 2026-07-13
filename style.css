@@ -421,5 +421,131 @@ transform:translateY(-8px);
 100%{
 transform:translateY(0px);
 }
+/* ===========================
+   Animated Menu Background
+=========================== */
+
+#menu-bg{
+    position:absolute;
+    inset:0;
+    overflow:hidden;
+    z-index:0;
+}
+
+#screen-menu .panel{
+    position:relative;
+    z-index:2;
+}
+.cloud{
+
+position:absolute;
+
+background:rgba(255,255,255,.08);
+
+border-radius:100px;
+
+filter:blur(6px);
+
+animation:cloudMove linear infinite;
 
 }
+
+.c1{
+
+width:180px;
+height:55px;
+
+top:12%;
+left:-220px;
+
+animation-duration:28s;
+
+}
+
+.c2{
+
+width:230px;
+height:70px;
+
+top:38%;
+left:-260px;
+
+animation-duration:40s;
+
+}
+
+.c3{
+
+width:160px;
+height:50px;
+
+top:68%;
+left:-180px;
+
+animation-duration:33s;
+
+}
+.star{
+
+position:absolute;
+
+width:4px;
+height:4px;
+
+background:white;
+
+border-radius:50%;
+
+box-shadow:0 0 10px white;
+
+animation:twinkle 2s infinite;
+
+}
+
+.s1{top:18%;left:15%;}
+.s2{top:30%;left:80%;}
+.s3{top:52%;left:25%;}
+.s4{top:75%;left:70%;}
+.s5{top:14%;left:58%;}
+
+@keyframes cloudMove{
+
+0%{
+
+transform:translateX(0);
+
+}
+
+100%{
+
+transform:translateX(900px);
+
+}
+
+}
+
+@keyframes twinkle{
+
+0%{
+
+opacity:.3;
+transform:scale(.8);
+
+}
+
+50%{
+
+opacity:1;
+transform:scale(1.4);
+
+}
+
+100%{
+
+opacity:.3;
+transform:scale(.8);
+
+}
+
+}
+
