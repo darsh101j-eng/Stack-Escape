@@ -205,15 +205,32 @@ body.in-game #hud { display: flex; }
 }
 
 .game-title {
-  font-family: var(--font-display); font-weight: 800;
-  font-size: clamp(30px, 8vw, 40px);
-  letter-spacing: 0.5px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(42px, 9vw, 58px);
+  letter-spacing: 2px;
   text-align: center;
-  line-height: 1.05;
-  background: linear-gradient(180deg, #fff 10%, var(--gold) 100%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-  text-shadow: 0 6px 24px rgba(255, 210, 63, 0.25);
-  margin: 4px 0 0;
+  line-height: 0.95;
+
+  background: linear-gradient(
+      180deg,
+      #ffffff 0%,
+      #ffe37d 40%,
+      #ffc83d 100%
+  );
+
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  text-shadow:
+      0 0 18px rgba(255,210,63,.35),
+      0 10px 28px rgba(0,0,0,.35);
+
+  margin-top: 10px;
+  margin-bottom: 8px;
+
+  animation: logoFloat 3.5s ease-in-out infinite;
 }
 .game-subtitle {
   font-size: 12.5px; color: var(--text-dim); text-align: center; margin-top: -8px;
