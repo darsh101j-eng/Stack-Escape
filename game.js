@@ -77,39 +77,93 @@ const Game = {
     });
 
     const wrap = document.getElementById('canvas-wrap');
-    let touchId = null, side = null, lastY = 0;
 
-    const startTouch = (x, y, id) => {
-      touchId = id;
-      const rect = wrap.getBoundingClientRect();
-      side = (x - rect.left) / rect.width < 0.5 ? 'left' : 'right';
-      this.input[side] = true;
-      lastY = y;
-    };
-    const moveTouch = (x, y) => {
-      if (touchId === null) return;
-      if (lastY - y > 32) { this.player.requestJump(); lastY = y; }
-      else if (y - lastY > 6) { lastY = y; }
-      const rect = wrap.getBoundingClientRect();
-      const newSide = (x - rect.left) / rect.width < 0.5 ? 'left' : 'right';
-      if (newSide !== side) { this.input[side] = false; side = newSide; this.input[side] = true; }
-    };
-    const endTouch = () => { if (side) this.input[side] = false; touchId = null; side = null; };
+let activeSide = null;
 
-    wrap.addEventListener('touchstart', e => { e.preventDefault(); const t = e.changedTouches[0]; startTouch(t.clientX, t.clientY, t.identifier); }, { passive: false });
-    wrap.addEventListener('touchmove', e => {
-      e.preventDefault();
-      const t = Array.from(e.changedTouches).find(t => t.identifier === touchId) || e.changedTouches[0];
-      if (t) moveTouch(t.clientX, t.clientY);
-    }, { passive: false });
-    wrap.addEventListener('touchend', e => { e.preventDefault(); endTouch(); }, { passive: false });
-    wrap.addEventListener('touchcancel', e => { e.preventDefault(); endTouch(); }, { passive: false });
+const updateInput = (x, y, pressed) => {
+    const rect = wrap.getBoundingClientRect();
 
-    // Desktop mouse fallback mirrors the touch zones.
-    wrap.addEventListener('mousedown', e => startTouch(e.clientX, e.clientY, 'mouse'));
-    window.addEventListener('mousemove', e => { if (touchId === 'mouse') moveTouch(e.clientX, e.clientY); });
-    window.addEventListener('mouseup', () => { if (touchId === 'mouse') endTouch(); });
-  },
+    const relX = (x - rect.left) / rect.width;
+    const relY = (y - rect.top) / rect.height;
+
+    // Only use the bottom 30% for mobile controls
+    if (relY < 0.70) {
+        this.input.left = false;
+        this.input.right = false;
+        activeSide = null;
+        return;
+    }
+
+    // Left 30%
+    if (relX < 0.30) {
+        this.input.left = pressed;
+        this.input.right = false;
+        activeSide = "left";
+    }
+
+    // Right 30%
+    else if (relX > 0.70) {
+        this.input.right = pressed;
+        this.input.left = false;
+        activeSide = "right";
+    }
+
+    // Middle 40%
+    else {
+        this.input.left = false;
+        this.input.right = false;
+
+        if (pressed) {
+            this.player.requestJump();
+        }
+
+        activeSide = null;
+    }
+};
+
+// Mobile
+wrap.addEventListener("touchstart", e => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    updateInput(t.clientX, t.clientY, true);
+}, { passive:false });
+
+wrap.addEventListener("touchmove", e => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    updateInput(t.clientX, t.clientY, true);
+}, { passive:false });
+
+wrap.addEventListener("touchend", e => {
+    e.preventDefault();
+    this.input.left = false;
+    this.input.right = false;
+    activeSide = null;
+}, { passive:false });
+
+wrap.addEventListener("touchcancel", e => {
+    e.preventDefault();
+    this.input.left = false;
+    this.input.right = false;
+    activeSide = null;
+}, { passive:false });
+
+// Desktop mouse (unchanged behaviour)
+wrap.addEventListener("mousedown", e => {
+    updateInput(e.clientX, e.clientY, true);
+});
+
+window.addEventListener("mousemove", e => {
+    if (e.buttons) {
+        updateInput(e.clientX, e.clientY, true);
+    }
+});
+
+window.addEventListener("mouseup", () => {
+    this.input.left = false;
+    this.input.right = false;
+    activeSide = null;
+});
 
   // --- State transitions ------------------------------------------------
   startGame() {
