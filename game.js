@@ -164,6 +164,7 @@ window.addEventListener("mouseup", () => {
     this.input.right = false;
     activeSide = null;
 });
+  }    
 
   // --- State transitions ------------------------------------------------
   startGame() {
