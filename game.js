@@ -184,6 +184,7 @@ const Game = {
     this.highestGeneratedY = CONFIG.GROUND_Y;
     this.camera.y = -(CONFIG.VIEW_HEIGHT - 140);
     this.dangerY = 220;
+    this.worldRebaseTotal = 0;
     this.runTime = 0;
     this.lastMinY = this.player.minY;
     this.noProgressTimer = 0;
@@ -199,7 +200,7 @@ const Game = {
 
   // --- Procedural generation --------------------------------------------
   currentFloor() {
-    return Math.max(0, Math.floor((CONFIG.GROUND_Y - this.player.minY) / CONFIG.FLOOR_HEIGHT));
+    return Math.max(0, Math.floor((CONFIG.GROUND_Y - this.player.minY + this.worldRebaseTotal) / CONFIG.FLOOR_HEIGHT));
   },
 
   ensureGeneration() {
@@ -209,7 +210,7 @@ const Game = {
   },
 
   spawnBand() {
-    const floor = Math.max(0, Math.floor((CONFIG.GROUND_Y - this.highestGeneratedY) / CONFIG.FLOOR_HEIGHT));
+    const floor = Math.max(0, Math.floor((CONFIG.GROUND_Y - this.highestGeneratedY + this.worldRebaseTotal) / CONFIG.FLOOR_HEIGHT));
     const diff = CONFIG.difficultyForFloor(floor);
     const gap = Utils.randRange(diff.gapMin, diff.gapMax);
     this.highestGeneratedY -= gap;
@@ -240,7 +241,13 @@ const Game = {
       let kind = 'coin';
       if (Utils.chance(0.08)) kind = 'gem';
       else if (Utils.chance(0.06)) kind = 'star';
-      this.collectibles.push(PickupFactory.createCollectible(kind, plat.x + plat.w / 2, plat.y - 24));
+      // If a static hazard sits on one edge of this platform, keep the
+      // pickup over the clear side rather than dead-center, so it doesn't
+      // end up baiting the player toward the spikes/fire.
+      const pickupX = plat.hasHazard
+        ? (plat.hazardSide === 'left' ? plat.x + plat.w * 0.78 : plat.x + plat.w * 0.22)
+        : plat.x + plat.w / 2;
+      this.collectibles.push(PickupFactory.createCollectible(kind, pickupX, plat.y - 24));
     }
 
     if (Utils.chance(diff.powerupChance)) {
@@ -255,14 +262,20 @@ const Game = {
       case 'spikes':
       case 'fire': {
         const w = type === 'fire' ? 28 : 34;
-        const margin = 8;
-        const leftSpace = plat.x - margin;
-        const rightSpace = W - (plat.x + plat.w) - margin;
-        let x;
-        if (leftSpace > w && (rightSpace <= w || Utils.chance(0.5))) x = Utils.randRange(margin, Math.max(margin, plat.x - w - margin));
-        else x = Utils.randRange(plat.x + plat.w + margin, Math.max(plat.x + plat.w + margin, W - w - margin));
-        x = Utils.clamp(x, 4, W - w - 4);
+        const minSafeZone = 34; // leave enough platform width for a safe landing spot
+        if (plat.w < w + minSafeZone) break; // too narrow to fit a hazard + safe landing — skip this one
+        // These two hazard types are static (they never move — see
+        // Obstacle.update()), so they need to visually sit on an actual
+        // surface. Previously they were placed floating in the gap beside
+        // the platform with nothing underneath, which is what looked like
+        // obstacles randomly hanging in open air. Anchoring them to one
+        // edge of the platform they were generated next to — leaving the
+        // rest of it clear — fixes that and reads as an intentional trap.
+        const edgeLeft = Utils.chance(0.5);
+        const x = edgeLeft ? plat.x + 3 : plat.x + plat.w - w - 3;
         const y = plat.y - (type === 'fire' ? 34 : 14);
+        plat.hasHazard = true;
+        plat.hazardSide = edgeLeft ? 'left' : 'right';
         this.obstacles.push(ObstacleFactory.create(type, x, y, { w }));
         break;
       }
@@ -391,6 +404,7 @@ const Game = {
     }
 
     this.updateCamera(dt);
+    this.rebaseWorldIfNeeded();
     this.ensureGeneration();
     this.cleanup();
     Effects.update(dt);
@@ -420,6 +434,43 @@ const Game = {
     const targetY = this.player.y - CONFIG.VIEW_HEIGHT * 0.62;
     const damped = Utils.damp(this.camera.y, targetY, 6, dt);
     this.camera.y = Math.min(this.camera.y, damped);
+  },
+
+  // --- Floating origin ---------------------------------------------------
+  // camera.y (and every other world y-coordinate) only ever grows more
+  // negative the higher the player climbs, with no ceiling. Once those
+  // numbers get into the tens/hundreds of thousands, some GPU-accelerated
+  // canvas compositing paths lose sub-pixel precision on the translate
+  // applied every frame — a well-known source of visible shimmer/jitter at
+  // large coordinates that has nothing to do with frame rate. Periodically
+  // shifting every world y-coordinate back toward zero together (a
+  // "floating origin") keeps the numbers small indefinitely. Because every
+  // coordinate moves by the exact same amount in the same frame, nothing
+  // about relative positions, physics, or what's on screen changes at all
+  // — worldRebaseTotal tracks the cumulative shift so floor/score math
+  // (which compares against the fixed CONFIG.GROUND_Y) stays correct.
+  rebaseWorldIfNeeded() {
+    const REBASE_THRESHOLD = 20000;
+    if (this.camera.y > -REBASE_THRESHOLD) return;
+    const shift = REBASE_THRESHOLD;
+
+    this.camera.y += shift;
+    this.dangerY += shift;
+    this.highestGeneratedY += shift;
+    this.lastMinY += shift;
+    this.player.y += shift;
+    this.player.minY += shift;
+    this.worldRebaseTotal += shift;
+
+    for (const p of this.platforms) p.y += shift;
+    for (const o of this.obstacles) {
+      o.y += shift;
+      if (o.anchorY !== undefined) o.anchorY += shift;
+    }
+    for (const c of this.collectibles) c.y += shift;
+    for (const pu of this.powerupPickups) pu.y += shift;
+    for (const particle of Effects.particlePool.active) particle.y += shift;
+    for (const text of Effects.textPool.active) text.y += shift;
   },
 
   cleanup() {

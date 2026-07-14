@@ -92,7 +92,7 @@ class Platform {
         }
         break;
       case 'breakable':
-        if (this.breakTimer > 0) {
+        if (this.breakTimer > 0 && !this.broken) {
           this.breakTimer += dt;
           if (this.breakTimer >= this.breakDelay) {
             this.broken = true;
