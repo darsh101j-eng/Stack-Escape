@@ -179,6 +179,12 @@ class Platform {
     ctx.roundRect ? ctx.roundRect(0, 0, this.w, h * 0.7, 5) : ctx.rect(0, 0, this.w, h * 0.7);
     ctx.fill();
 
+    // Cheap glossy top sheen on every platform (a single translucent
+    // rect — same cost as the ice-only highlight this replaces/extends)
+    // for a more polished, toy-like look without any gradient/shadow cost.
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.fillRect(this.w * 0.08, 1.5, this.w * 0.84, 2.5);
+
     if (this.type === 'ice') {
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
       ctx.fillRect(this.w * 0.1, 1, this.w * 0.3, 3);
@@ -243,8 +249,8 @@ const PlatformFactory = {
     return Utils.randRange(a, b);
   },
 
-  create(type, x, y) {
-    const w = this.widthFor(type);
+  create(type, x, y, presetWidth) {
+    const w = presetWidth !== undefined ? presetWidth : this.widthFor(type);
     x = Utils.clamp(x, 4, CONFIG.WORLD_WIDTH - w - 4);
     const p = new Platform(type, x, y, w);
     if (type === 'moving') p.baseX = x;

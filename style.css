@@ -304,74 +304,76 @@ body.in-game #hud { display: flex; }
 /* --- Main menu — title screen treatment ---------------------------------
    Distinct from the pause/gameover/shop modals: no dark blurred card, no
    backdrop-filter. The animated sky + clouds already drawn on the canvas
-   show through the top of the screen; a gradient panel anchored to the
-   bottom carries the title, stats and actions, like a mobile game's title
-   screen rather than an in-game pause card.
+   show through around the content, which is grouped and centered in the
+   middle of the screen — logo mark + big wordmark on top, then tagline,
+   stats and actions below — rather than pinned to one edge.
 
-   Performance note: everything below is either a static gradient (painted
-   once, never re-computed) or a `transform`-only animation, which the
-   browser hands to the compositor — it never touches this element's layout
-   or paint, so no matter how long the menu sits on screen it costs nothing
-   extra per frame. There's deliberately no `filter`/blur animation and no
-   JS-driven effect here. */
+   Performance note: everything below is either a static gradient/shape
+   (painted once, never re-computed) or a single `transform`-only animation
+   on the primary CTA, which the browser hands to the compositor — it never
+   touches layout or paint, so it costs nothing extra per frame no matter
+   how long the menu sits on screen. There's deliberately no `filter`
+   animation, no blur, and no JS-driven effect here. */
 .screen.screen-hero {
-  align-items: flex-end;
-  padding: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
   background: transparent;
   backdrop-filter: none;
+  overflow-y: auto;
 }
 .screen.screen-hero .hero-content {
   position: relative;
-  box-sizing: border-box;
   width: 100%;
-  min-height: 60%;
-  max-height: 100%;
-  overflow-y: auto;
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  gap: 13px;
-  padding: 30px 24px calc(24px + env(safe-area-inset-bottom));
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  background: linear-gradient(180deg,
-    rgba(5, 3, 15, 0) 0%,
-    rgba(9, 6, 24, 0.5) 26%,
-    rgba(7, 4, 20, 0.87) 55%,
-    #08051a 100%);
+  max-width: 336px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 10px;
+  padding: 26px 20px;
 }
-/* Soft static atmosphere behind the title — a plain radial-gradient stands
-   in for a blurred glow so there's no `filter` cost, and it's painted once
-   since nothing about it ever changes. */
+/* Soft static vignette behind the whole group for legibility against a
+   bright/busy sky — a plain radial-gradient, not a filter blur, painted
+   once since nothing about it ever animates. */
 .screen.screen-hero .hero-content::before {
   content: '';
   position: absolute;
-  top: -60px; left: 50%;
-  width: 300px; height: 220px;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse at center, rgba(255, 210, 63, 0.16) 0%, rgba(255, 210, 63, 0) 72%);
+  top: 50%; left: 50%;
+  width: 150%; height: 130%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(ellipse at center, rgba(5, 3, 15, 0.6) 0%, rgba(5, 3, 15, 0.32) 42%, rgba(5, 3, 15, 0) 72%);
+  z-index: -1;
   pointer-events: none;
 }
-.hero-badge {
-  position: relative;
-  font-family: var(--font-display); font-weight: 700; font-size: 11.5px;
-  letter-spacing: 0.1em; color: var(--gold); text-transform: uppercase;
-  background: rgba(255, 210, 63, 0.12);
-  border: 1px solid rgba(255, 210, 63, 0.35);
-  padding: 5px 14px; border-radius: 999px;
+.hero-logo-mark {
+  width: 84px; height: auto;
+  margin-bottom: 2px;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
 }
 .hero-title {
-  position: relative;
-  margin-top: 0;
-  font-size: clamp(36px, 12vw, 50px);
-  text-shadow: 0 8px 26px rgba(255, 210, 63, 0.28);
+  margin: 0;
+  font-size: clamp(44px, 15vw, 62px);
+  line-height: 0.98;
+  text-shadow: 0 10px 30px rgba(255, 210, 63, 0.32);
+}
+.hero-badge {
+  font-family: var(--font-display); font-weight: 700; font-size: 11.5px;
+  letter-spacing: 0.1em; color: var(--gold); text-transform: uppercase;
+  background: rgba(255, 210, 63, 0.14);
+  border: 1px solid rgba(255, 210, 63, 0.38);
+  padding: 5px 14px; border-radius: 999px;
+  margin-top: 2px;
 }
 .hero-divider {
   width: 46px; height: 3px; border-radius: 999px;
   background: linear-gradient(90deg, var(--coral), var(--gold));
-  opacity: 0.7;
+  opacity: 0.75;
+  margin: 2px 0;
 }
-.hero-stats .stat-box { background: rgba(255, 255, 255, 0.05); }
+.hero-stats { width: 100%; }
+.hero-stats .stat-box { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); }
+.stat-icon { font-size: 15px; margin-bottom: 2px; }
 .btn-hero-play {
-  position: relative;
+  width: 100%;
+  margin-top: 4px;
   font-size: 19px; letter-spacing: 0.4px; padding: 17px 20px;
   box-shadow: 0 14px 34px rgba(255, 61, 129, 0.45);
   animation: hero-play-pulse 2.6s ease-in-out infinite;
@@ -383,6 +385,11 @@ body.in-game #hud { display: flex; }
 }
 @media (prefers-reduced-motion: reduce) {
   .btn-hero-play { animation: none; }
+}
+@media (max-height: 620px) {
+  .screen.screen-hero .hero-content { gap: 6px; padding: 14px 20px; }
+  .hero-logo-mark { width: 60px; }
+  .hero-title { font-size: clamp(34px, 12vw, 44px); }
 }
 
 /* --- Game over specifics ------------------------------------------------ */

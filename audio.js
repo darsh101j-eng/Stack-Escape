@@ -45,7 +45,10 @@ const SoundManager = {
   },
 
   resume() {
-    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.ctx && this.ctx.state !== 'running') {
+      const p = this.ctx.resume();
+      if (p && p.catch) p.catch(() => {});
+    }
   },
 
   setSfxEnabled(v) { this.enabled.sfx = v; },
@@ -152,13 +155,27 @@ const SoundManager = {
   // music toggle (musicPlaying) — earlier notes were routed through the
   // SFX bus by mistake, so turning sound effects off silently killed the
   // melody even with music left on.
+  //
+  // The whole rich graph is wrapped in a try/catch: if any single node
+  // type isn't supported somewhere, we fall back to a minimal two-oscillator
+  // pad that is about as basic as WebAudio gets, rather than silently
+  // producing no music at all.
   startMusic() {
     if (!this._ready || !this.enabled.music || this.musicPlaying) return;
-    const ctx = this.ctx;
     this.musicPlaying = true;
+    try {
+      this._startRichMusic();
+    } catch (e) {
+      console.warn('Rich music graph failed, falling back to basic pad.', e);
+      try { this._startBasicMusic(); } catch (e2) { console.warn('Basic music also failed.', e2); this.musicPlaying = false; }
+    }
+  },
+
+  _startRichMusic() {
+    const ctx = this.ctx;
     this.musicGain.gain.cancelScheduledValues(ctx.currentTime);
     this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, ctx.currentTime);
-    this.musicGain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 1.6);
+    this.musicGain.gain.linearRampToValueAtTime(0.34, ctx.currentTime + 1.6);
 
     // --- Warm pad: three gently-detuned sines through a slowly swept
     // lowpass filter, plus a slow "breathing" tremolo so it feels alive
@@ -175,11 +192,11 @@ const SoundManager = {
 
     const padFilter = ctx.createBiquadFilter();
     padFilter.type = 'lowpass';
-    padFilter.frequency.value = 720;
+    padFilter.frequency.value = 750;
     padFilter.Q.value = 0.3;
 
     const padGain = ctx.createGain();
-    padGain.gain.value = 0.5;
+    padGain.gain.value = 0.6;
     padOsc1.connect(padFilter); padOsc2.connect(padFilter); padOsc3.connect(padFilter);
     padFilter.connect(padGain).connect(this.musicGain);
 
@@ -192,7 +209,7 @@ const SoundManager = {
     const breathe = ctx.createOscillator();
     breathe.frequency.value = 0.09;
     const breatheGain = ctx.createGain();
-    breatheGain.gain.value = 0.07;
+    breatheGain.gain.value = 0.08;
     breathe.connect(breatheGain).connect(padGain.gain);
 
     padOsc1.start(); padOsc2.start(); padOsc3.start(); lfo.start(); breathe.start();
@@ -208,11 +225,12 @@ const SoundManager = {
     echoFilter.frequency.value = 2100;
     echoDelay.connect(echoFeedback).connect(echoFilter).connect(echoDelay);
     const echoOut = ctx.createGain();
-    echoOut.gain.value = 0.5;
+    echoOut.gain.value = 0.6;
     echoDelay.connect(echoOut).connect(this.musicGain);
     this._musicEchoIn = echoDelay;
 
     this._musicNodes = { padOsc1, padOsc2, padOsc3, padFilter, padGain, lfo, breathe, echoDelay, echoFeedback, echoFilter, echoOut };
+    this._musicMode = 'rich';
 
     // Gentle wandering melody over a two-chord vamp (Am9 <-> Fmaj7-ish)
     // instead of a rigid scale run up and down, so it stays soothing and
@@ -231,6 +249,25 @@ const SoundManager = {
     scheduleStep();
   },
 
+  // Minimal fallback: two plain oscillators + one gain node. About as
+  // simple as WebAudio gets, used only if the richer graph above throws.
+  _startBasicMusic() {
+    const ctx = this.ctx;
+    this.musicGain.gain.cancelScheduledValues(ctx.currentTime);
+    this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, ctx.currentTime);
+    this.musicGain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 1.2);
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    osc1.type = 'sine'; osc2.type = 'sine';
+    osc1.frequency.value = 220; osc2.frequency.value = 330;
+    const g = ctx.createGain();
+    g.gain.value = 0.5;
+    osc1.connect(g); osc2.connect(g); g.connect(this.musicGain);
+    osc1.start(); osc2.start();
+    this._musicNodes = { padOsc1: osc1, padOsc2: osc2, padGain: g };
+    this._musicMode = 'basic';
+  },
+
   // A single soft plucked melody note, fed into the echo bus.
   _musicPluck(freq) {
     if (!this._ready) return;
@@ -241,7 +278,7 @@ const SoundManager = {
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(freq, t0);
     amp.gain.setValueAtTime(0.0001, t0);
-    amp.gain.exponentialRampToValueAtTime(0.055, t0 + 0.04);
+    amp.gain.exponentialRampToValueAtTime(0.09, t0 + 0.04);
     amp.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.15);
     osc.connect(amp);
     amp.connect(this.musicGain);
@@ -256,10 +293,12 @@ const SoundManager = {
     clearTimeout(this.musicTimerId);
     if (this._musicNodes) {
       const ctx = this.ctx;
-      const { padOsc1, padOsc2, padOsc3, lfo, breathe, padGain } = this._musicNodes;
-      padGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
+      const nodes = this._musicNodes;
+      try { nodes.padGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8); } catch (e) {}
       setTimeout(() => {
-        try { padOsc1.stop(); padOsc2.stop(); padOsc3.stop(); lfo.stop(); breathe.stop(); } catch (e) {}
+        for (const key of ['padOsc1', 'padOsc2', 'padOsc3', 'lfo', 'breathe']) {
+          if (nodes[key]) { try { nodes[key].stop(); } catch (e) {} }
+        }
       }, 900);
       this._musicNodes = null;
       this._musicEchoIn = null;

@@ -188,7 +188,13 @@ class Player {
   _drawBody(ctx, skin) {
     const w = this.w, h = this.h;
     const r = w * 0.5;
-    ctx.fillStyle = skin.body;
+    // Subtle top-to-bottom gradient instead of a flat fill — only one
+    // shape, one entity, so this is negligible cost per frame.
+    const grad = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
+    grad.addColorStop(0, skin.accent);
+    grad.addColorStop(0.45, skin.body);
+    grad.addColorStop(1, skin.body);
+    ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.moveTo(-w / 2, h / 2 - r * 0.3);
     ctx.arcTo(-w / 2, -h / 2, 0, -h / 2, r);

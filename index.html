@@ -62,14 +62,20 @@
     <!-- ---------------- Main menu (title screen) ---------------- -->
     <div id="screen-menu" class="screen screen-hero">
       <div class="hero-content">
-        <div class="hero-badge">✦ Endless Tower Climb ✦</div>
+        <svg class="hero-logo-mark" viewBox="0 0 120 92" aria-hidden="true">
+          <rect x="4"  y="64" width="50" height="15" rx="7.5" fill="#ff6b6b"/>
+          <rect x="38" y="40" width="50" height="15" rx="7.5" fill="#ffd23f"/>
+          <rect x="70" y="16" width="46" height="15" rx="7.5" fill="#4fd8ff"/>
+          <circle cx="95" cy="10" r="6" fill="#fdf7ff"/>
+        </svg>
         <h1 class="game-title hero-title">STACK<br>ESCAPE</h1>
+        <div class="hero-badge">✦ Endless Tower Climb ✦</div>
         <p class="game-subtitle">Climb before the tower catches you.</p>
         <div class="hero-divider"></div>
         <div class="stats-row hero-stats">
-          <div class="stat-box"><div class="val" id="menu-best-score">0</div><div class="lbl">Best Score</div></div>
-          <div class="stat-box"><div class="val" id="menu-best-floor">0</div><div class="lbl">Best Floor</div></div>
-          <div class="stat-box"><div class="val" id="menu-coins">0</div><div class="lbl">Coins</div></div>
+          <div class="stat-box"><div class="stat-icon">🏆</div><div class="val" id="menu-best-score">0</div><div class="lbl">Best Score</div></div>
+          <div class="stat-box"><div class="stat-icon">🏢</div><div class="val" id="menu-best-floor">0</div><div class="lbl">Best Floor</div></div>
+          <div class="stat-box"><div class="stat-icon">🪙</div><div class="val" id="menu-coins">0</div><div class="lbl">Coins</div></div>
         </div>
         <button id="btn-play" class="btn-primary btn-hero-play">▲ &nbsp;PLAY</button>
         <div class="icon-row">

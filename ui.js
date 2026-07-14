@@ -113,10 +113,26 @@ const UI = {
       });
     });
 
-    // Any button press gives a tiny satisfying click sound + unlocks audio.
-    document.querySelectorAll('button').forEach(b => {
-      b.addEventListener('pointerdown', () => { SoundManager.init(); SoundManager.resume(); });
-    });
+    this._bindAudioUnlock();
+  },
+
+  // WebAudio requires a real user gesture before it'll produce sound.
+  // Listening only for `pointerdown` on `<button>` elements (the previous
+  // approach) misses stricter mobile browsers that only recognize certain
+  // gesture types (e.g. `touchend`/`click`, not `pointerdown`) as valid for
+  // unlocking audio, and misses any gesture that isn't a button press.
+  // This listens at the document level for several gesture types and keeps
+  // re-attempting on each one until the context reports itself running.
+  _bindAudioUnlock() {
+    const events = ['pointerdown', 'touchend', 'mousedown', 'keydown'];
+    const unlock = () => {
+      SoundManager.init();
+      SoundManager.resume();
+      if (SoundManager.ctx && SoundManager.ctx.state === 'running') {
+        events.forEach(evt => document.removeEventListener(evt, unlock, true));
+      }
+    };
+    events.forEach(evt => document.addEventListener(evt, unlock, true));
   },
 
   showScreen(name) {

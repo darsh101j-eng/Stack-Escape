@@ -215,19 +215,20 @@ const Game = {
     this.highestGeneratedY -= gap;
 
     const type = PlatformFactory.pickType(floor);
-    // The previous version pre-clamped this x to a *guessed* width (90px)
-    // and separately re-clamped inside PlatformFactory.create() using the
-    // platform's *actual* width. The two didn't agree, so the running
-    // horizontal anchor could end up outside the range the next spawn's
-    // clamp allowed — which then clamped to the same wall every time,
-    // producing a permanent rightward pile-up after a couple of platforms.
-    // Reflecting (bouncing) the wander target back into a safe margin
-    // instead of pinning it to an edge fixes that and keeps platforms
-    // spread naturally across the whole width.
-    const rawTargetX = this.lastPlatformX + Utils.randRange(-diff.xJitter, diff.xJitter);
-    const targetX = Utils.reflect(rawTargetX, 36, CONFIG.WORLD_WIDTH - 36);
-    const plat = PlatformFactory.create(type, targetX, this.highestGeneratedY);
-    this.lastPlatformX = plat.x + plat.w / 2;
+    const w = PlatformFactory.widthFor(type);
+    // The previous version reflected the running *center* anchor against a
+    // domain expressed in *left-edge* terms — a coordinate-frame mismatch
+    // that silently shifted every single step further right by half a
+    // platform width, so the walk crept rightward and piled up at the wall
+    // within a couple of spawns. Keeping everything in center-space (both
+    // the anchor and the reflection domain) fixes it for good.
+    const margin = 4;
+    const centerMin = margin + w / 2;
+    const centerMax = CONFIG.WORLD_WIDTH - margin - w / 2;
+    const rawCenter = this.lastPlatformX + Utils.randRange(-diff.xJitter, diff.xJitter);
+    const center = Utils.reflect(rawCenter, centerMin, centerMax);
+    const plat = PlatformFactory.create(type, center - w / 2, this.highestGeneratedY, w);
+    this.lastPlatformX = center;
     this.platforms.push(plat);
 
     if (floor > 0 && Utils.chance(diff.obstacleChance)) {
@@ -339,6 +340,16 @@ const Game = {
       let rise = diff.riseSpeed;
       this.noProgressTimer = (this.player.minY < this.lastMinY - 1) ? 0 : this.noProgressTimer + dt;
       if (this.noProgressTimer > 3) rise *= CONFIG.DANGER.CATCHUP_BONUS;
+
+      // Keep the crusher from lagging off-screen for long stretches during
+      // a fast climb: once the gap to the player exceeds a comfortable
+      // leash distance, pull it back in proportion to how far behind it's
+      // fallen, so it stays a visible, looming threat instead of vanishing.
+      const gap = this.dangerY - this.player.y;
+      const maxGap = CONFIG.VIEW_HEIGHT * CONFIG.DANGER.LEASH_SCREENS;
+      if (gap > maxGap) rise += (gap - maxGap) * CONFIG.DANGER.LEASH_PULL;
+      rise = Math.min(rise, CONFIG.DANGER.MAX_TOTAL_RISE_SPEED);
+
       this.dangerY -= rise * worldDt;
     }
     this.lastMinY = this.player.minY;
@@ -370,7 +381,10 @@ const Game = {
 
     if (this.player.alive) {
       if (this.player.y + this.player.h >= this.dangerY) this.handleDeath('crushed');
-      else if (this.player.y > this.camera.y + CONFIG.VIEW_HEIGHT + 60) this.handleDeath('fell');
+      // Once the player has fully left the visible screen (top of the
+      // sprite past the bottom edge, with only a small grace buffer) the
+      // run ends — no lingering off-screen fall.
+      else if (this.player.y > this.camera.y + CONFIG.VIEW_HEIGHT + 16) this.handleDeath('fell');
     } else {
       this.deathAnimTimer += dt;
       if (this.deathAnimTimer > 0.9 && this.state === 'playing') this.finalizeRun();

@@ -37,7 +37,17 @@ const CONFIG = {
     BASE_RISE_SPEED: 58,       // world units / second
     RISE_PER_FLOOR: 1.35,      // added speed per floor climbed
     MAX_RISE_SPEED: 430,
-    CATCHUP_BONUS: 1.9         // speed multiplier applied when player is idle/stalling
+    CATCHUP_BONUS: 1.9,        // speed multiplier applied when player is idle/stalling
+    // A fast, skilled climb can otherwise out-run a constant rise speed
+    // entirely, letting the danger floor fall off-screen for a long time
+    // and killing the tension. Once it lags more than LEASH_SCREENS worth
+    // of screen-heights behind the player, an extra pull (proportional to
+    // how far behind it is) kicks in to reel it back toward the bottom of
+    // the visible area, and MAX_TOTAL_RISE_SPEED caps how fast that pull
+    // can ever get so it stays dramatic without being an instant teleport.
+    LEASH_SCREENS: 1.1,
+    LEASH_PULL: 1.3,
+    MAX_TOTAL_RISE_SPEED: 900
   },
 
   // --- Combo --------------------------------------------------------------
