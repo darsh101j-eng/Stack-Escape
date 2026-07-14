@@ -7,6 +7,13 @@
 
 const PLATFORM_H = 16;
 
+// How "flat" (close to horizontal) a rotating platform's bar has to be
+// before it counts as safe/landable (purple). Widening this from the
+// original 0.38 gives a noticeably longer landable window per rotation —
+// paired with a slightly slower spin below, the safe window goes from
+// roughly a quarter of each cycle to well over a third of it.
+const ROTATING_SAFE_SIN = 0.6;
+
 class Platform {
   constructor(type, x, y, w) {
     this.type = type;
@@ -41,7 +48,7 @@ class Platform {
 
     // Rotating
     this.angle = Math.random() * Math.PI * 2;
-    this.angularSpeed = Utils.randRange(1.1, 1.7) * (Utils.chance(0.5) ? 1 : -1);
+    this.angularSpeed = Utils.randRange(0.85, 1.3) * (Utils.chance(0.5) ? 1 : -1);
 
     // Spring visual squash
     this.springSquash = new SpringValue(1, 300, 12);
@@ -52,7 +59,7 @@ class Platform {
 
   solid() {
     if (this.dead || this.broken) return false;
-    if (this.type === 'rotating') return Math.abs(Math.sin(this.angle)) < 0.38;
+    if (this.type === 'rotating') return Math.abs(Math.sin(this.angle)) < ROTATING_SAFE_SIN;
     return true;
   }
 
@@ -142,7 +149,7 @@ class Platform {
     if (this.type === 'rotating') {
       ctx.translate(this.x + this.w / 2, this.y + this.h / 2);
       ctx.rotate(this.angle);
-      const safe = Math.abs(Math.sin(this.angle)) < 0.38;
+      const safe = Math.abs(Math.sin(this.angle)) < ROTATING_SAFE_SIN;
       this._drawBar(ctx, -this.w / 2, -this.h / 2, this.w, this.h, safe ? '#b083ff' : '#5c4a80');
       ctx.restore();
       return;

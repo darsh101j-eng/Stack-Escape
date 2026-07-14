@@ -80,12 +80,15 @@ const CONFIG = {
       CONFIG.DANGER.MAX_RISE_SPEED
     );
 
-    // Gap grows slowly with floor but stays within a jumpable range.
-    const gapMin = 60 + Math.min(f * 0.35, 34);
-    const gapMax = 92 + Math.min(f * 0.55, 58);
+    // Gap grows slowly with floor but stays within a jumpable range. Capped
+    // comfortably under the ~132px max rise of a normal (non-superJump)
+    // jump so a platform is never generated out of reach.
+    const gapMin = 58 + Math.min(f * 0.3, 30);
+    const gapMax = 88 + Math.min(f * 0.42, 34);
 
-    // Horizontal offset range between consecutive platforms.
-    const xJitter = Math.min(70 + f * 0.6, 170);
+    // Horizontal offset range between consecutive platforms — capped so a
+    // max-height jump still has enough hang time to cover it.
+    const xJitter = Math.min(66 + f * 0.5, 150);
 
     const obstacleChance = Math.min(0.06 + f * 0.011, 0.42);
     const powerupChance = Math.max(0.09 - f * 0.0008, 0.045);

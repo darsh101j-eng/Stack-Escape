@@ -215,8 +215,18 @@ const Game = {
     this.highestGeneratedY -= gap;
 
     const type = PlatformFactory.pickType(floor);
-    const x = Utils.clamp(this.lastPlatformX + Utils.randRange(-diff.xJitter, diff.xJitter), 10, CONFIG.WORLD_WIDTH - 90);
-    const plat = PlatformFactory.create(type, x, this.highestGeneratedY);
+    // The previous version pre-clamped this x to a *guessed* width (90px)
+    // and separately re-clamped inside PlatformFactory.create() using the
+    // platform's *actual* width. The two didn't agree, so the running
+    // horizontal anchor could end up outside the range the next spawn's
+    // clamp allowed — which then clamped to the same wall every time,
+    // producing a permanent rightward pile-up after a couple of platforms.
+    // Reflecting (bouncing) the wander target back into a safe margin
+    // instead of pinning it to an edge fixes that and keeps platforms
+    // spread naturally across the whole width.
+    const rawTargetX = this.lastPlatformX + Utils.randRange(-diff.xJitter, diff.xJitter);
+    const targetX = Utils.reflect(rawTargetX, 36, CONFIG.WORLD_WIDTH - 36);
+    const plat = PlatformFactory.create(type, targetX, this.highestGeneratedY);
     this.lastPlatformX = plat.x + plat.w / 2;
     this.platforms.push(plat);
 
@@ -310,6 +320,15 @@ const Game = {
     for (const o of this.obstacles) o.update(worldDt, this.dangerY);
     for (const c of this.collectibles) c.update(worldDt, this.dangerY);
     for (const pu of this.powerupPickups) pu.update(worldDt, this.dangerY);
+
+    // A cracked/breakable platform that just crumbled out from under the
+    // player should send them straight down — not let them quietly touch
+    // down on whatever solid platform happens to sit below it.
+    if (this.player.onGround && this.player.groundPlatform && this.player.groundPlatform.broken) {
+      this.player.hazardFalling = true;
+      this.player.onGround = false;
+      this.player.groundPlatform = null;
+    }
 
     PowerupManager.applyMagnet(this.player, this.collectibles, dt);
     PowerupManager.update(dt);

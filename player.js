@@ -32,6 +32,12 @@ class Player {
     this.justLanded = false;
     this.justJumped = false;
     this.invulnTimer = 0;
+    // True for the fall right after a breaking (cracked/breakable) platform
+    // collapses under the player — while set, landing detection is skipped
+    // so they fall straight through any platform below instead of quietly
+    // touching down on it. Cleared the moment they jump under their own
+    // power again.
+    this.hazardFalling = false;
   }
 
   requestJump() { this.jumpBufferTimer = CONFIG.PHYSICS.JUMP_BUFFER; }
@@ -97,7 +103,7 @@ class Player {
     const wasGroundedPlatform = this.groundPlatform;
     this.groundPlatform = null;
 
-    if (this.vy >= 0) {
+    if (this.vy >= 0 && !this.hazardFalling) {
       for (const plat of world.platforms) {
         if (!plat.solid()) continue;
         const feetY = this.y + this.h;
@@ -131,6 +137,7 @@ class Player {
       this.jumpBufferTimer = 0;
       this.coyoteTimer = P.COYOTE_TIME + 1;
       this.vy = mods.superJump ? P.SUPER_JUMP_VELOCITY : P.JUMP_VELOCITY;
+      this.hazardFalling = false;
       this.onGround = false;
       this.groundPlatform = null;
       this.squashY.snap(1.45); this.squashX.snap(0.7);

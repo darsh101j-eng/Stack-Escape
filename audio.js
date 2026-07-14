@@ -147,45 +147,107 @@ const SoundManager = {
 
   // --- Ambient background music -------------------------------------
   // A slow evolving pad (two detuned oscillators through a swept filter)
-  // plus a soft plucked arpeggio stepped on a simple lookahead scheduler.
+  // plus a soft plucked melody stepped on a simple lookahead scheduler.
+  // Everything here routes through musicGain and is gated only by the
+  // music toggle (musicPlaying) — earlier notes were routed through the
+  // SFX bus by mistake, so turning sound effects off silently killed the
+  // melody even with music left on.
   startMusic() {
     if (!this._ready || !this.enabled.music || this.musicPlaying) return;
     const ctx = this.ctx;
     this.musicPlaying = true;
     this.musicGain.gain.cancelScheduledValues(ctx.currentTime);
-    this.musicGain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 1.2);
+    this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, ctx.currentTime);
+    this.musicGain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 1.6);
 
+    // --- Warm pad: three gently-detuned sines through a slowly swept
+    // lowpass filter, plus a slow "breathing" tremolo so it feels alive
+    // rather than a static drone. ---
     const padOsc1 = ctx.createOscillator();
     const padOsc2 = ctx.createOscillator();
-    padOsc1.type = 'sine'; padOsc2.type = 'sine';
-    padOsc1.frequency.value = 110; padOsc2.frequency.value = 110 * 1.5;
+    const padOsc3 = ctx.createOscillator();
+    padOsc1.type = 'sine'; padOsc2.type = 'sine'; padOsc3.type = 'sine';
+    padOsc1.frequency.value = 110;        // root
+    padOsc2.frequency.value = 110 * 1.5;  // fifth
+    padOsc2.detune.value = 6;             // gentle chorus/warmth
+    padOsc3.frequency.value = 55;         // sub octave for body
+    padOsc3.detune.value = -5;
+
     const padFilter = ctx.createBiquadFilter();
     padFilter.type = 'lowpass';
-    padFilter.frequency.value = 800;
+    padFilter.frequency.value = 720;
+    padFilter.Q.value = 0.3;
+
     const padGain = ctx.createGain();
     padGain.gain.value = 0.5;
-    padOsc1.connect(padFilter); padOsc2.connect(padFilter);
+    padOsc1.connect(padFilter); padOsc2.connect(padFilter); padOsc3.connect(padFilter);
     padFilter.connect(padGain).connect(this.musicGain);
 
     const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.07;
+    lfo.frequency.value = 0.06;
     const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 350;
+    lfoGain.gain.value = 300;
     lfo.connect(lfoGain).connect(padFilter.frequency);
 
-    padOsc1.start(); padOsc2.start(); lfo.start();
-    this._musicNodes = { padOsc1, padOsc2, padFilter, padGain, lfo };
+    const breathe = ctx.createOscillator();
+    breathe.frequency.value = 0.09;
+    const breatheGain = ctx.createGain();
+    breatheGain.gain.value = 0.07;
+    breathe.connect(breatheGain).connect(padGain.gain);
 
-    const scale = [220, 261.6, 293.7, 329.6, 392, 440]; // A minor-ish pentatonic-ish
+    padOsc1.start(); padOsc2.start(); padOsc3.start(); lfo.start(); breathe.start();
+
+    // --- Soft feedback-delay bus the melody notes bloom into, for an
+    // airy, spacious feel without needing any audio files/reverb IR. ---
+    const echoDelay = ctx.createDelay(1.0);
+    echoDelay.delayTime.value = 0.44;
+    const echoFeedback = ctx.createGain();
+    echoFeedback.gain.value = 0.3;
+    const echoFilter = ctx.createBiquadFilter();
+    echoFilter.type = 'lowpass';
+    echoFilter.frequency.value = 2100;
+    echoDelay.connect(echoFeedback).connect(echoFilter).connect(echoDelay);
+    const echoOut = ctx.createGain();
+    echoOut.gain.value = 0.5;
+    echoDelay.connect(echoOut).connect(this.musicGain);
+    this._musicEchoIn = echoDelay;
+
+    this._musicNodes = { padOsc1, padOsc2, padOsc3, padFilter, padGain, lfo, breathe, echoDelay, echoFeedback, echoFilter, echoOut };
+
+    // Gentle wandering melody over a two-chord vamp (Am9 <-> Fmaj7-ish)
+    // instead of a rigid scale run up and down, so it stays soothing and
+    // unobtrusive rather than sounding like a loop.
+    const chordA = [220, 261.6, 329.6, 392, 440];      // A minor 9-ish
+    const chordB = [174.6, 220, 261.6, 349.2, 415.3];  // F major 7-ish
     this.musicStep = 0;
     const scheduleStep = () => {
       if (!this.musicPlaying) return;
-      const note = scale[this.musicStep % scale.length];
-      if (this.musicStep % 3 !== 2) this._tone({ freq: note * 2, type: 'sine', duration: 0.8, gain: 0.06 });
+      const bar = Math.floor(this.musicStep / 4) % 2;
+      const chord = bar === 0 ? chordA : chordB;
+      if (this.musicStep % 2 === 0) this._musicPluck(Utils.pick(chord));
       this.musicStep++;
-      this.musicTimerId = setTimeout(scheduleStep, 900);
+      this.musicTimerId = setTimeout(scheduleStep, 940 + Math.random() * 140);
     };
     scheduleStep();
+  },
+
+  // A single soft plucked melody note, fed into the echo bus.
+  _musicPluck(freq) {
+    if (!this._ready) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const amp = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t0);
+    amp.gain.setValueAtTime(0.0001, t0);
+    amp.gain.exponentialRampToValueAtTime(0.055, t0 + 0.04);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.15);
+    osc.connect(amp);
+    amp.connect(this.musicGain);
+    if (this._musicEchoIn) amp.connect(this._musicEchoIn);
+    osc.start(t0);
+    osc.stop(t0 + 1.2);
   },
 
   stopMusic() {
@@ -194,10 +256,13 @@ const SoundManager = {
     clearTimeout(this.musicTimerId);
     if (this._musicNodes) {
       const ctx = this.ctx;
-      const { padOsc1, padOsc2, lfo, padGain } = this._musicNodes;
-      padGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.6);
-      setTimeout(() => { try { padOsc1.stop(); padOsc2.stop(); lfo.stop(); } catch (e) {} }, 700);
+      const { padOsc1, padOsc2, padOsc3, lfo, breathe, padGain } = this._musicNodes;
+      padGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
+      setTimeout(() => {
+        try { padOsc1.stop(); padOsc2.stop(); padOsc3.stop(); lfo.stop(); breathe.stop(); } catch (e) {}
+      }, 900);
       this._musicNodes = null;
+      this._musicEchoIn = null;
     }
   }
 };

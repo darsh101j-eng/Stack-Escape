@@ -13,6 +13,18 @@ const Utils = {
 
   randRange(min, max) { return min + Math.random() * (max - min); },
 
+  // Bounces a value back into [min,max] instead of pinning it to the edge.
+  // Used for wandering values (like platform x-position random walks) where
+  // a plain clamp() would cause repeated draws to pile up on the boundary
+  // once the walk reaches it — reflecting keeps the distribution even.
+  reflect(v, min, max) {
+    const w = max - min;
+    if (w <= 0) return min;
+    let t = (v - min) % (2 * w);
+    if (t < 0) t += 2 * w;
+    return t <= w ? min + t : max - (t - w);
+  },
+
   randInt(min, max) { return Math.floor(Utils.randRange(min, max + 1)); },
 
   chance(p) { return Math.random() < p; },
