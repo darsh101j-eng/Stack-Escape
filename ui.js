@@ -25,6 +25,7 @@ const UI = {
 
       screens: {
         menu: $('screen-menu'),
+        tutorial: $('screen-tutorial'),
         pause: $('screen-pause'),
         gameover: $('screen-gameover'),
         shop: $('screen-shop'),
@@ -37,6 +38,8 @@ const UI = {
       menuBestFloor: $('menu-best-floor'),
       menuCoins: $('menu-coins'),
       dailyBadge: $('daily-badge'),
+
+      tutorialDontShow: $('tutorial-dont-show'),
 
       goScore: $('go-score'),
       goFloor: $('go-floor'),
@@ -53,9 +56,11 @@ const UI = {
 
       toggleSfx: $('toggle-sfx'),
       toggleMusic: $('toggle-music'),
+      toggleTutorial: $('toggle-tutorial'),
 
       dailyStreakText: $('daily-streak-text'),
-      dailyRewardAmount: $('daily-reward-amount')
+      dailyRewardAmount: $('daily-reward-amount'),
+      btnClaimDaily: $('btn-claim-daily')
     };
 
     this._bindStatic();
@@ -65,7 +70,7 @@ const UI = {
   _bindStatic() {
     const on = (id, fn) => { const e = document.getElementById(id); if (e) e.addEventListener('click', fn); };
 
-    on('btn-play', () => Game.startGame());
+    on('btn-play', () => this.handlePlayClick());
     on('btn-open-shop', () => this.openShop());
     on('btn-close-shop', () => this.showScreen('menu'));
     on('btn-open-missions', () => this.openMissions());
@@ -74,6 +79,8 @@ const UI = {
     on('btn-close-settings', () => this.toggleSettings(false));
     on('btn-daily', () => this.openDaily());
     on('btn-claim-daily', () => this.claimDaily());
+    on('btn-close-daily', () => this.closeDaily());
+    on('btn-tutorial-gotit', () => this.dismissTutorial());
 
     on('btn-pause', () => Game.pauseGame());
     on('btn-resume', () => Game.resumeGame());
@@ -93,6 +100,11 @@ const UI = {
     on('toggle-music', () => {
       const v = Storage.toggleSetting('music');
       SoundManager.setMusicEnabled(v);
+      this.refreshSettingsToggles();
+      SoundManager.playClick();
+    });
+    on('toggle-tutorial', () => {
+      Storage.toggleSetting('tutorial');
       this.refreshSettingsToggles();
       SoundManager.playClick();
     });
@@ -153,6 +165,28 @@ const UI = {
     this.el.menuBestFloor.textContent = d.bestFloor;
     this.el.menuCoins.textContent = Utils.formatNumber(d.coins);
     this.el.dailyBadge.classList.toggle('hidden', !Storage.isDailyAvailable());
+  },
+
+  // --- Tutorial -----------------------------------------------------
+  // Shown on top of the menu when Play is pressed, unless the player has
+  // dismissed it with "don't show again" or turned it off in Settings —
+  // either way the same persistent settings.tutorial flag governs it, so
+  // re-enabling it in Settings brings it right back.
+  handlePlayClick() {
+    if (Storage.get().settings.tutorial) {
+      if (this.el.tutorialDontShow) this.el.tutorialDontShow.checked = false;
+      this.showScreen('tutorial');
+    } else {
+      Game.startGame();
+    }
+  },
+
+  dismissTutorial() {
+    if (this.el.tutorialDontShow && this.el.tutorialDontShow.checked) {
+      Storage.setSetting('tutorial', false);
+      this.refreshSettingsToggles();
+    }
+    Game.startGame();
   },
 
   // --- HUD (gameplay) --------------------------------------------------
@@ -299,29 +333,65 @@ const UI = {
     const s = Storage.get().settings;
     this.el.toggleSfx.classList.toggle('on', s.sfx);
     this.el.toggleMusic.classList.toggle('on', s.music);
+    this.el.toggleTutorial.classList.toggle('on', s.tutorial);
   },
 
   // --- Daily reward -----------------------------------------------------
+  // Streak/reward preview math mirrors Storage.claimDaily()'s own logic
+  // without mutating any state, so what's shown here always matches what
+  // claiming would actually produce.
+  _previewDailyStreak() {
+    const d = Storage.get();
+    if (!d.daily.lastClaim) return 1;
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const diffDays = Math.round((Storage.dateFromKey(Storage.todayString()) - Storage.dateFromKey(d.daily.lastClaim)) / oneDayMs);
+    return diffDays === 1 ? d.daily.streak + 1 : 1;
+  },
+
   openDaily() {
     const d = Storage.get();
-    const nextStreak = (d.daily.streak % CONFIG.DAILY_REWARDS.length) + (Storage.isDailyAvailable() ? 1 : 0) || 1;
-    const previewStreak = Storage.isDailyAvailable() ? (d.daily.lastClaim ? d.daily.streak + 1 : 1) : d.daily.streak;
-    const reward = CONFIG.DAILY_REWARDS[(Math.max(previewStreak, 1) - 1) % CONFIG.DAILY_REWARDS.length];
-    this.el.dailyStreakText.textContent = Storage.isDailyAvailable() ? `Day ${Math.max(previewStreak, 1)} streak` : 'Come back tomorrow!';
-    this.el.dailyRewardAmount.textContent = reward;
-    document.getElementById('btn-claim-daily').disabled = !Storage.isDailyAvailable();
+    const btn = this.el.btnClaimDaily;
+    if (Storage.isDailyAvailable()) {
+      const streak = this._previewDailyStreak();
+      const reward = CONFIG.DAILY_REWARDS[(streak - 1) % CONFIG.DAILY_REWARDS.length];
+      this.el.dailyStreakText.textContent = `Day ${streak} streak`;
+      this.el.dailyRewardAmount.textContent = reward;
+      btn.textContent = 'Claim';
+      btn.disabled = false;
+      btn.classList.remove('claimed');
+    } else {
+      // Already claimed today — show what was actually claimed rather than
+      // a re-computed preview, and make the claimed state unmistakable so
+      // reopening this manually never looks like it's claimable again.
+      const streak = Math.max(d.daily.streak, 1);
+      const reward = CONFIG.DAILY_REWARDS[(streak - 1) % CONFIG.DAILY_REWARDS.length];
+      this.el.dailyStreakText.textContent = `Day ${streak} streak — come back tomorrow!`;
+      this.el.dailyRewardAmount.textContent = reward;
+      btn.textContent = '✓ Claimed';
+      btn.disabled = true;
+      btn.classList.add('claimed');
+    }
     this.el.popupDaily.classList.remove('hidden');
   },
 
   claimDaily() {
     if (!Storage.isDailyAvailable()) return;
-    const { reward } = Storage.claimDaily();
+    const { reward, streak } = Storage.claimDaily();
     SoundManager.playUnlock();
     Effects.confetti(CONFIG.WORLD_WIDTH / 2, 200);
+    this.el.dailyStreakText.textContent = `Day ${streak} streak`;
     this.el.dailyRewardAmount.textContent = reward;
-    document.getElementById('btn-claim-daily').disabled = true;
+    this.el.btnClaimDaily.textContent = '✓ Claimed';
+    this.el.btnClaimDaily.disabled = true;
+    this.el.btnClaimDaily.classList.add('claimed');
     this.renderMenuStats();
-    setTimeout(() => this.el.popupDaily.classList.add('hidden'), 900);
+    // No auto-hide timeout — the close button is always available, so the
+    // player decides when to dismiss it instead of it vanishing on its own
+    // (which is what made it feel stuck/glitchy when reopened manually).
+  },
+
+  closeDaily() {
+    this.el.popupDaily.classList.add('hidden');
   }
 };
 

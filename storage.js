@@ -24,7 +24,7 @@ const Storage = {
         themes: ['dusk']
       },
       selected: { skin: 'cyan', trail: 'none', jumpFx: 'basic', theme: 'dusk' },
-      settings: { sfx: true, music: true },
+      settings: { sfx: true, music: true, tutorial: true },
       daily: { lastClaim: null, streak: 0 },
       missions: { date: null, list: [] }
     };
@@ -112,6 +112,13 @@ const Storage = {
   toggleSetting(key) {
     const d = this.get();
     d.settings[key] = !d.settings[key];
+    this.save();
+    return d.settings[key];
+  },
+
+  setSetting(key, value) {
+    const d = this.get();
+    d.settings[key] = value;
     this.save();
     return d.settings[key];
   },

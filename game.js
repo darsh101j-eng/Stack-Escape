@@ -259,7 +259,7 @@ const Game = {
   spawnObstacleNear(plat, type) {
     const W = CONFIG.WORLD_WIDTH;
     switch (type) {
-      case 'spikes':
+      case 'icicle':
       case 'fire': {
         const w = type === 'fire' ? 28 : 34;
         const minSafeZone = 34; // leave enough platform width for a safe landing spot
@@ -273,16 +273,16 @@ const Game = {
         // rest of it clear — fixes that and reads as an intentional trap.
         const edgeLeft = Utils.chance(0.5);
         const x = edgeLeft ? plat.x + 3 : plat.x + plat.w - w - 3;
-        const y = plat.y - (type === 'fire' ? 34 : 14);
+        const y = plat.y - (type === 'fire' ? 34 : 26);
         plat.hasHazard = true;
         plat.hazardSide = edgeLeft ? 'left' : 'right';
         this.obstacles.push(ObstacleFactory.create(type, x, y, { w }));
         break;
       }
-      case 'rock': {
-        const y = plat.y - Utils.randRange(34, 56);
-        const x = Utils.randRange(20, W - 20);
-        this.obstacles.push(ObstacleFactory.create('rock', x, y));
+      case 'bat': {
+        const y = plat.y - Utils.randRange(45, 80);
+        const x = Utils.randRange(30, W - 30);
+        this.obstacles.push(ObstacleFactory.create('bat', x, y, { xMin: 20, xMax: W - 20 }));
         break;
       }
       case 'hammer': {
@@ -538,7 +538,7 @@ const Game = {
       Effects.burst(this.player.x + this.player.w / 2, this.player.y + this.player.h / 2, { count: 14, color: '#4fd8ff', speed: 180, size: 4, life: 0.4, glow: true });
       Effects.addShake(0.35);
       SoundManager.playShieldHit();
-      if (obstacle.type === 'rock' || obstacle.type === 'debris') obstacle.dead = true;
+      if (obstacle.type === 'bat' || obstacle.type === 'debris') obstacle.dead = true;
       this.player.invulnTimer = 0.6;
     } else {
       this.handleDeath('obstacle');

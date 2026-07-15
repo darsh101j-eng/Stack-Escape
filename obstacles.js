@@ -12,9 +12,13 @@ class Obstacle {
     this.dead = false;
     this.t = Math.random() * 10;
 
-    // Rock
-    this.vx = opts.vx ?? (Utils.chance(0.5) ? 1 : -1) * Utils.randRange(70, 130);
-    this.radius = opts.radius ?? 13;
+    // Bat — patrols back and forth like a drone but with an organic
+    // sine-wave vertical bob and flapping wings, instead of rock's abrupt
+    // full-width wall-to-wall bounce.
+    this.xMin = opts.xMin ?? 20; this.xMax = opts.xMax ?? CONFIG.WORLD_WIDTH - 20;
+    this.batSpeed = opts.batSpeed ?? Utils.randRange(55, 95);
+    this.batDir = Utils.chance(0.5) ? 1 : -1;
+    this.bobAmp = opts.bobAmp ?? Utils.randRange(9, 16);
 
     // Hammer
     this.anchorX = x; this.anchorY = y - (opts.ropeLen ?? 60);
@@ -24,7 +28,6 @@ class Obstacle {
     this.swingPhase = Math.random() * Math.PI * 2;
 
     // Drone
-    this.xMin = opts.xMin ?? 20; this.xMax = opts.xMax ?? CONFIG.WORLD_WIDTH - 20;
     this.droneSpeed = opts.droneSpeed ?? Utils.randRange(55, 95);
     this.droneDir = Utils.chance(0.5) ? 1 : -1;
 
@@ -37,18 +40,18 @@ class Obstacle {
     this.laserState = 'idle'; this.laserTimer = Utils.randRange(0, 1);
     this.laserCycle = { idle: 1.1, telegraph: 0.55, active: 0.5 };
 
-    // Spikes / fire static
-    this.w = opts.w ?? 30; this.h = opts.h ?? (type === 'fire' ? 34 : 16);
+    // Icicle / fire static
+    this.w = opts.w ?? 30; this.h = opts.h ?? (type === 'fire' ? 34 : 26);
     this.flameAccum = 0;
   }
 
   update(dt, dangerY) {
     this.t += dt;
     switch (this.type) {
-      case 'rock':
-        this.x += this.vx * dt;
-        if (this.x < this.radius) { this.x = this.radius; this.vx *= -1; }
-        if (this.x > CONFIG.WORLD_WIDTH - this.radius) { this.x = CONFIG.WORLD_WIDTH - this.radius; this.vx *= -1; }
+      case 'bat':
+        this.x += this.batDir * this.batSpeed * dt;
+        if (this.x < this.xMin) { this.x = this.xMin; this.batDir = 1; }
+        if (this.x > this.xMax) { this.x = this.xMax; this.batDir = -1; }
         break;
       case 'hammer':
         this.swingPhase += this.swingSpeed * dt;
@@ -88,7 +91,7 @@ class Obstacle {
   // slightly so hits feel fair).
   hitbox() {
     switch (this.type) {
-      case 'rock': return { x: this.x - this.radius + 3, y: this.y - this.radius + 3, w: this.radius * 2 - 6, h: this.radius * 2 - 6 };
+      case 'bat': return { x: this.x - 11, y: this.y - 9 + Math.sin(this.t * 2.4) * this.bobAmp, w: 22, h: 16 };
       case 'hammer': {
         const hx = this.anchorX + Math.sin(this.swingPhase) * this.swingMax * this.ropeLen;
         const hy = this.anchorY + Math.cos(this.swingPhase) * this.swingMax * this.ropeLen;
@@ -99,7 +102,7 @@ class Obstacle {
       case 'laser': return this.laserState === 'active'
         ? { x: this.x, y: this.y - 4, w: this.laserW, h: 8 }
         : { x: -9999, y: -9999, w: 0, h: 0 };
-      case 'spikes': return { x: this.x + 4, y: this.y, w: this.w - 8, h: this.h };
+      case 'icicle': return { x: this.x + 5, y: this.y + 4, w: this.w - 10, h: this.h - 4 };
       case 'fire': return { x: this.x + 6, y: this.y + 6, w: this.w - 12, h: this.h - 6 };
       default: return { x: this.x, y: this.y, w: this.w, h: this.h };
     }
@@ -110,10 +113,10 @@ class Obstacle {
   draw(ctx) {
     ctx.save();
     switch (this.type) {
-      case 'spikes': this._drawSpikes(ctx); break;
+      case 'icicle': this._drawIcicle(ctx); break;
       case 'fire': this._drawFire(ctx); break;
       case 'laser': this._drawLaser(ctx); break;
-      case 'rock': this._drawRock(ctx); break;
+      case 'bat': this._drawBat(ctx); break;
       case 'hammer': this._drawHammer(ctx); break;
       case 'drone': this._drawDrone(ctx); break;
       case 'debris': this._drawDebris(ctx); break;
@@ -121,17 +124,29 @@ class Obstacle {
     ctx.restore();
   }
 
-  _drawSpikes(ctx) {
-    const n = Math.max(2, Math.round(this.w / 12));
-    ctx.fillStyle = '#e2e8f0';
+  _drawIcicle(ctx) {
+    // Ice crystal spikes growing up from the platform surface this hazard
+    // was anchored to (base at the surface, tapering upward) — same
+    // function as the spikes hazard it replaces, distinct icy look. Flat
+    // fills only, no per-frame gradient allocation.
+    const n = Math.max(2, Math.round(this.w / 14));
+    const seg = this.w / n;
+    const baseY = this.y + this.h;
+    ctx.fillStyle = '#a8e6f5';
     for (let i = 0; i < n; i++) {
-      const sx = this.x + i * (this.w / n);
+      const sx = this.x + i * seg;
+      const len = this.h * (0.72 + 0.28 * Math.abs(Math.sin(i * 2.1 + 0.6)));
       ctx.beginPath();
-      ctx.moveTo(sx, this.y + this.h);
-      ctx.lineTo(sx + this.w / n / 2, this.y);
-      ctx.lineTo(sx + this.w / n, this.y + this.h);
+      ctx.moveTo(sx, baseY);
+      ctx.lineTo(sx + seg, baseY);
+      ctx.lineTo(sx + seg / 2, baseY - len);
       ctx.closePath();
       ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    for (let i = 0; i < n; i++) {
+      const sx = this.x + i * seg;
+      ctx.fillRect(sx + seg * 0.32, baseY - this.h * 0.85, seg * 0.16, this.h * 0.32);
     }
   }
 
@@ -168,13 +183,34 @@ class Obstacle {
     }
   }
 
-  _drawRock(ctx) {
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.x * 0.05);
-    ctx.fillStyle = '#8a8a9a';
-    ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#6c6c7c';
-    ctx.beginPath(); ctx.arc(-3, -3, this.radius * 0.4, 0, Math.PI * 2); ctx.fill();
+  _drawBat(ctx) {
+    const bob = Math.sin(this.t * 2.4) * this.bobAmp;
+    const flap = Math.sin(this.t * 14);
+    ctx.translate(this.x, this.y + bob);
+    // Wings behind the body, flapping
+    const wingSpread = 10 + flap * 5;
+    ctx.fillStyle = '#3a1f4d';
+    ctx.beginPath();
+    ctx.moveTo(0, -2);
+    ctx.lineTo(-wingSpread, -8 - flap * 3);
+    ctx.lineTo(-wingSpread * 0.6, 2);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, -2);
+    ctx.lineTo(wingSpread, -8 - flap * 3);
+    ctx.lineTo(wingSpread * 0.6, 2);
+    ctx.closePath(); ctx.fill();
+    // Body
+    ctx.fillStyle = '#241332';
+    ctx.beginPath(); ctx.ellipse(0, 0, 7, 6, 0, 0, Math.PI * 2); ctx.fill();
+    // Little ears
+    ctx.beginPath();
+    ctx.moveTo(-4, -5); ctx.lineTo(-6, -10); ctx.lineTo(-2, -6); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(4, -5); ctx.lineTo(6, -10); ctx.lineTo(2, -6); ctx.closePath(); ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#ff3d81';
+    ctx.beginPath(); ctx.arc(-2.5, -1, 1.3, 0, Math.PI * 2); ctx.arc(2.5, -1, 1.3, 0, Math.PI * 2); ctx.fill();
   }
 
   _drawHammer(ctx) {

@@ -87,6 +87,24 @@
       </div>
     </div>
 
+    <!-- ---------------- Tutorial ---------------- -->
+    <div id="screen-tutorial" class="screen hidden">
+      <div class="panel">
+        <div class="panel-header">How to Play</div>
+        <div class="tutorial-list">
+          <div class="tutorial-row"><span class="tutorial-icon">👈 👉</span><span>Tap the left or right side of the screen to move</span></div>
+          <div class="tutorial-row"><span class="tutorial-icon">👆</span><span>Tap the middle of the screen to jump</span></div>
+          <div class="tutorial-row"><span class="tutorial-icon">⚠️</span><span>Watch out — some platforms and obstacles are dangerous!</span></div>
+          <div class="tutorial-row"><span class="tutorial-icon">🌋</span><span>Keep climbing — the rising danger below never stops</span></div>
+        </div>
+        <label class="tutorial-checkbox-row">
+          <input type="checkbox" id="tutorial-dont-show" />
+          <span>Don't show this again</span>
+        </label>
+        <button id="btn-tutorial-gotit" class="btn-primary">Got it!</button>
+      </div>
+    </div>
+
     <!-- ---------------- Pause ---------------- -->
     <div id="screen-pause" class="screen hidden">
       <div class="panel">
@@ -149,6 +167,7 @@
         <div class="panel-header">Settings</div>
         <div class="setting-row"><span>Sound Effects</span><button id="toggle-sfx" class="toggle" aria-label="Toggle sound effects"></button></div>
         <div class="setting-row"><span>Music</span><button id="toggle-music" class="toggle" aria-label="Toggle music"></button></div>
+        <div class="setting-row"><span>Gameplay Tutorial</span><button id="toggle-tutorial" class="toggle" aria-label="Toggle gameplay tutorial"></button></div>
         <button id="btn-reset-progress" class="btn-secondary" style="margin-top:10px;color:var(--coral);">Reset Progress</button>
       </div>
     </div>
@@ -156,6 +175,7 @@
     <!-- ---------------- Daily reward popup ---------------- -->
     <div id="popup-daily" class="popup hidden">
       <div class="panel">
+        <button id="btn-close-daily" class="close-x">✕</button>
         <div class="gift-icon">🎁</div>
         <div class="panel-header" style="font-size:17px;">Daily Reward</div>
         <div id="daily-streak-text" class="game-subtitle">Day 1 streak</div>

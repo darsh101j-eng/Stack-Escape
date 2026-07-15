@@ -216,6 +216,7 @@ body.in-game #hud { display: flex; }
 .screen.hidden { opacity: 0; pointer-events: none; transform: scale(1.02); }
 
 .panel {
+  position: relative;
   width: 100%; max-width: 320px;
   background: var(--panel);
   border: 1px solid var(--border-soft);
@@ -448,6 +449,23 @@ body.in-game #hud { display: flex; }
 }
 .mission-claim:disabled { background: var(--panel-light); color: var(--text-dim); }
 
+/* --- Tutorial ----------------------------------------------------------- */
+.tutorial-list { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.tutorial-row {
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  font-size: 13px; line-height: 1.35; color: var(--text);
+  background: var(--panel-light); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.tutorial-icon { font-size: 17px; flex-shrink: 0; width: 30px; text-align: center; }
+.tutorial-checkbox-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  font-size: 12.5px; color: var(--text-dim); cursor: pointer; user-select: none;
+}
+.tutorial-checkbox-row input[type="checkbox"] {
+  width: 17px; height: 17px; accent-color: var(--mint); cursor: pointer; flex-shrink: 0;
+}
+
 /* --- Settings modal --------------------------------------------------- */
 .modal {
   position: absolute; inset: 0; z-index: 20;
@@ -482,6 +500,12 @@ body.in-game #hud { display: flex; }
 .gift-icon { font-size: 46px; filter: drop-shadow(0 8px 18px rgba(255, 210, 63, 0.4)); }
 #daily-reward-amount {
   font-family: var(--font-display); font-weight: 800; font-size: 30px; color: var(--gold);
+}
+#btn-claim-daily.claimed {
+  background: var(--panel-light);
+  color: var(--mint);
+  box-shadow: none;
+  border: 1px solid rgba(61, 220, 151, 0.4);
 }
 
 /* ---------------------------------------------------------------------- */
