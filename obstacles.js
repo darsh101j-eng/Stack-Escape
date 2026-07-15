@@ -40,8 +40,16 @@ class Obstacle {
     this.laserState = 'idle'; this.laserTimer = Utils.randRange(0, 1);
     this.laserCycle = { idle: 1.1, telegraph: 0.55, active: 0.5 };
 
-    // Icicle / fire static
-    this.w = opts.w ?? 30; this.h = opts.h ?? (type === 'fire' ? 34 : 26);
+    // Geyser — a localized, telegraphed eruption anchored to a platform
+    // edge (replaces the old always-dangerous static icicle). Same
+    // idle/telegraph/active fairness pattern as laser, just a vertical,
+    // localized burst instead of a full-width beam.
+    this.geyserState = 'idle'; this.geyserTimer = Utils.randRange(0, 1);
+    this.geyserCycle = { idle: 1.3, telegraph: 0.5, active: 0.45 };
+    this.geyserHeight = opts.height ?? 85;
+
+    // Fire static
+    this.w = opts.w ?? 30; this.h = opts.h ?? 34;
     this.flameAccum = 0;
   }
 
@@ -74,6 +82,21 @@ class Obstacle {
           else { this.laserState = 'idle'; this.laserTimer = this.laserCycle.idle; }
         }
         break;
+      case 'geyser':
+        this.geyserTimer -= dt;
+        if (this.geyserTimer <= 0) {
+          if (this.geyserState === 'idle') { this.geyserState = 'telegraph'; this.geyserTimer = this.geyserCycle.telegraph; }
+          else if (this.geyserState === 'telegraph') { this.geyserState = 'active'; this.geyserTimer = this.geyserCycle.active; SoundManager.playSpring(); }
+          else { this.geyserState = 'idle'; this.geyserTimer = this.geyserCycle.idle; }
+        }
+        if (this.geyserState === 'telegraph') {
+          this.flameAccum += dt;
+          if (this.flameAccum > 0.11) {
+            this.flameAccum = 0;
+            Effects.burst(this.x, this.y - 4, { count: 1, color: '#8fe8ff', speed: 24, size: 3, life: 0.3, gravity: -50, spread: 0.5, angle: -Math.PI / 2 });
+          }
+        }
+        break;
       case 'fire':
         this.flameAccum += dt;
         if (this.flameAccum > 0.09) {
@@ -102,7 +125,9 @@ class Obstacle {
       case 'laser': return this.laserState === 'active'
         ? { x: this.x, y: this.y - 4, w: this.laserW, h: 8 }
         : { x: -9999, y: -9999, w: 0, h: 0 };
-      case 'icicle': return { x: this.x + 5, y: this.y + 4, w: this.w - 10, h: this.h - 4 };
+      case 'geyser': return this.geyserState === 'active'
+        ? { x: this.x - 9, y: this.y - this.geyserHeight, w: 18, h: this.geyserHeight + 4 }
+        : { x: -9999, y: -9999, w: 0, h: 0 };
       case 'fire': return { x: this.x + 6, y: this.y + 6, w: this.w - 12, h: this.h - 6 };
       default: return { x: this.x, y: this.y, w: this.w, h: this.h };
     }
@@ -113,7 +138,7 @@ class Obstacle {
   draw(ctx) {
     ctx.save();
     switch (this.type) {
-      case 'icicle': this._drawIcicle(ctx); break;
+      case 'geyser': this._drawGeyser(ctx); break;
       case 'fire': this._drawFire(ctx); break;
       case 'laser': this._drawLaser(ctx); break;
       case 'bat': this._drawBat(ctx); break;
@@ -124,29 +149,43 @@ class Obstacle {
     ctx.restore();
   }
 
-  _drawIcicle(ctx) {
-    // Ice crystal spikes growing up from the platform surface this hazard
-    // was anchored to (base at the surface, tapering upward) — same
-    // function as the spikes hazard it replaces, distinct icy look. Flat
-    // fills only, no per-frame gradient allocation.
-    const n = Math.max(2, Math.round(this.w / 14));
-    const seg = this.w / n;
-    const baseY = this.y + this.h;
-    ctx.fillStyle = '#a8e6f5';
-    for (let i = 0; i < n; i++) {
-      const sx = this.x + i * seg;
-      const len = this.h * (0.72 + 0.28 * Math.abs(Math.sin(i * 2.1 + 0.6)));
+  _drawGeyser(ctx) {
+    const state = this.geyserState;
+    // Nozzle base sitting on the platform edge — stays put through every
+    // state so the "safe to stand near, dangerous only when it fires"
+    // read is clear even before the player has seen a full cycle.
+    ctx.fillStyle = '#3a3a52';
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(this.x - 9, this.y - 7, 18, 10, 3) : ctx.rect(this.x - 9, this.y - 7, 18, 10);
+    ctx.fill();
+
+    const capColor = state === 'active' ? '#4fd8ff' : (state === 'telegraph' ? '#8fe8ff' : '#2a5a66');
+    ctx.fillStyle = capColor;
+    ctx.beginPath(); ctx.arc(this.x, this.y - 7, 5, 0, Math.PI * 2); ctx.fill();
+
+    if (state === 'telegraph') {
+      // Pulsing warning ring while it charges up.
+      ctx.globalAlpha = 0.45 + Math.sin(this.t * 22) * 0.3;
+      ctx.strokeStyle = '#8fe8ff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(this.x, this.y - 7, 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    } else if (state === 'active') {
+      const h = this.geyserHeight;
+      const wob = Math.sin(this.t * 18) * 3;
+      ctx.save();
+      ctx.shadowColor = '#4fd8ff'; ctx.shadowBlur = 12;
+      const grad = ctx.createLinearGradient(0, this.y, 0, this.y - h);
+      grad.addColorStop(0, 'rgba(143,232,255,0.95)');
+      grad.addColorStop(1, 'rgba(79,216,255,0.05)');
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.moveTo(sx, baseY);
-      ctx.lineTo(sx + seg, baseY);
-      ctx.lineTo(sx + seg / 2, baseY - len);
+      ctx.moveTo(this.x - 8, this.y - 4);
+      ctx.quadraticCurveTo(this.x - 8 + wob, this.y - h * 0.5, this.x - 4, this.y - h);
+      ctx.lineTo(this.x + 4, this.y - h);
+      ctx.quadraticCurveTo(this.x + 8 + wob, this.y - h * 0.5, this.x + 8, this.y - 4);
       ctx.closePath();
       ctx.fill();
-    }
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    for (let i = 0; i < n; i++) {
-      const sx = this.x + i * seg;
-      ctx.fillRect(sx + seg * 0.32, baseY - this.h * 0.85, seg * 0.16, this.h * 0.32);
+      ctx.restore();
     }
   }
 

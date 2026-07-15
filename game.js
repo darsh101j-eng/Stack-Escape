@@ -259,24 +259,37 @@ const Game = {
   spawnObstacleNear(plat, type) {
     const W = CONFIG.WORLD_WIDTH;
     switch (type) {
-      case 'icicle':
       case 'fire': {
-        const w = type === 'fire' ? 28 : 34;
+        const w = 28;
         const minSafeZone = 34; // leave enough platform width for a safe landing spot
         if (plat.w < w + minSafeZone) break; // too narrow to fit a hazard + safe landing — skip this one
-        // These two hazard types are static (they never move — see
-        // Obstacle.update()), so they need to visually sit on an actual
-        // surface. Previously they were placed floating in the gap beside
-        // the platform with nothing underneath, which is what looked like
-        // obstacles randomly hanging in open air. Anchoring them to one
-        // edge of the platform they were generated next to — leaving the
-        // rest of it clear — fixes that and reads as an intentional trap.
+        // Fire is static (it never moves — see Obstacle.update()), so it
+        // needs to visually sit on an actual surface. Anchoring it to one
+        // edge of the platform it was generated next to — leaving the rest
+        // of it clear — reads as an intentional trap rather than an
+        // obstacle floating in the gap with nothing underneath.
         const edgeLeft = Utils.chance(0.5);
         const x = edgeLeft ? plat.x + 3 : plat.x + plat.w - w - 3;
-        const y = plat.y - (type === 'fire' ? 34 : 26);
+        const y = plat.y - 34;
         plat.hasHazard = true;
         plat.hazardSide = edgeLeft ? 'left' : 'right';
-        this.obstacles.push(ObstacleFactory.create(type, x, y, { w }));
+        this.obstacles.push(ObstacleFactory.create('fire', x, y, { w }));
+        break;
+      }
+      case 'geyser': {
+        const footprint = 18;
+        const minSafeZone = 40; // extra room since it still needs a guaranteed-safe landing spot even though the danger itself is only timing-based
+        if (plat.w < footprint + minSafeZone) break;
+        // Unlike the old static icicle (always dangerous, no way to wait
+        // it out), a geyser cycles idle -> telegraph -> active just like
+        // laser — anchoring it to one edge still guarantees a safe strip
+        // to land on even if the timing is missed.
+        const edgeLeft = Utils.chance(0.5);
+        const x = edgeLeft ? plat.x + 12 : plat.x + plat.w - 12;
+        const y = plat.y;
+        plat.hasHazard = true;
+        plat.hazardSide = edgeLeft ? 'left' : 'right';
+        this.obstacles.push(ObstacleFactory.create('geyser', x, y, { height: Utils.randRange(70, 100) }));
         break;
       }
       case 'bat': {

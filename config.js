@@ -124,7 +124,7 @@ const CONFIG = {
 
   // Weighted obstacle table, [type, weight, minFloor]
   OBSTACLE_TABLE: [
-    ['icicle',   30, 0],
+    ['geyser',   30, 0],
     ['fire',     22, 2],
     ['bat',      18, 5],
     ['hammer',   16, 8],

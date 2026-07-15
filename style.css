@@ -216,7 +216,6 @@ body.in-game #hud { display: flex; }
 .screen.hidden { opacity: 0; pointer-events: none; transform: scale(1.02); }
 
 .panel {
-  position: relative;
   width: 100%; max-width: 320px;
   background: var(--panel);
   border: 1px solid var(--border-soft);
