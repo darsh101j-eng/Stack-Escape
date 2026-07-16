@@ -1,219 +1,759 @@
 // ============================================================================
-// audio.js — Stack Escape (Complete File)
-// Supports preloaded .mp3 files for looping background music and synthesized SFX.
+// game.js — Stack Escape
+// Orchestrates everything: canvas + input setup, the state machine (menu /
+// playing / paused / gameover), procedural band spawning, the per-frame
+// update (physics, collisions, combo, missions, danger floor, camera) and
+// rendering. Talks to UI for all DOM screens/HUD.
 // ============================================================================
 
-const SoundManager = {
-  ctx: null,
-  masterGain: null,
-  sfxGain: null,
-  musicGain: null,
-  noiseBuffer: null,
-  enabled: { sfx: true, music: true },
-  _ready: false,
+const POWERUP_LABEL = {
+  shield: 'Shield!', doubleCoins: '2x Coins!', magnet: 'Magnet!',
+  slowMotion: 'Slow-Mo!', superJump: 'Super Jump!', speedBoost: 'Speed Boost!'
+};
 
-  // --- HTML5 Audio Elements for custom BGMs ---
-  menuBGM: null,
-  gameplayBGM: null,
-  activeBGM: null,
+// Compacts an array in place, dropping entries where `.dead` is true.
+// Used instead of Array#filter in the per-frame cleanup pass so we don't
+// allocate (and immediately discard) a brand-new array 60 times a second —
+// a real source of GC pauses/stutter on lower-end mobile devices.
+function removeDead(arr) {
+  let write = 0;
+  for (let read = 0; read < arr.length; read++) {
+    if (!arr[read].dead) arr[write++] = arr[read];
+  }
+  arr.length = write;
+}
 
-  init() {
-    if (this._ready) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return; // gracefully degrade on unsupported browsers
-    this.ctx = new AC();
+const Game = {
+  state: 'menu', // 'menu' | 'playing' | 'paused' | 'gameover'
 
-    this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = 1;
-    this.masterGain.connect(this.ctx.destination);
-
-    this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.value = 0.85;
-    this.sfxGain.connect(this.masterGain);
-
-    this.musicGain = this.ctx.createGain();
-    this.musicGain.gain.value = 1.0; 
-    this.musicGain.connect(this.masterGain);
-
-    this.noiseBuffer = this._buildNoiseBuffer();
-
-    // --- Preload and configure custom MP3 tracks to loop ---
-    this.menuBGM = new Audio('main menu.mp3');
-    this.menuBGM.loop = true; // Loops the main menu theme continuously
-    
-    this.gameplayBGM = new Audio('gameplay music.mp3');
-    this.gameplayBGM.loop = true; // Loops the gameplay theme continuously
-
-    // Connect HTML5 elements into Web Audio graph to respect master/music gain sliders
-    try {
-      const menuSource = this.ctx.createMediaElementSource(this.menuBGM);
-      const gameplaySource = this.ctx.createMediaElementSource(this.gameplayBGM);
-      menuSource.connect(this.musicGain);
-      gameplaySource.connect(this.musicGain);
-    } catch (e) {
-      console.warn("MediaElementSource connection failed. Playing fallback direct audio.");
-    }
-
-    const s = Storage.get().settings;
-    this.enabled.sfx = s.sfx;
-    this.enabled.music = s.music;
-    this._ready = true;
-  },
-
-  resume() {
-    if (this.ctx && this.ctx.state !== 'running') {
-      const p = this.ctx.resume();
-      if (p && p.catch) p.catch(() => {});
-    }
-  },
-
-  setSfxEnabled(v) { this.enabled.sfx = v; },
-  setMusicEnabled(v) {
-    this.enabled.music = v;
-    if (!this._ready) return;
-    if (v) {
-      if (this.activeBGM) this.activeBGM.play().catch(e => console.log("BGM play deferred", e));
-    } else {
-      this.pauseBGM();
-    }
-  },
-
-  _buildNoiseBuffer() {
-    const len = this.ctx.sampleRate * 0.6;
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-    return buf;
-  },
-
-  _tone({ freq = 440, sweepTo = null, type = 'sine', duration = 0.15, gain = 0.3, attack = 0.005, delay = 0 } = {}) {
-    if (!this._ready || !this.enabled.sfx) return;
-    const ctx = this.ctx;
-    const t0 = ctx.currentTime + delay;
-    const osc = ctx.createOscillator();
-    const amp = ctx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, t0);
-    if (sweepTo) osc.frequency.exponentialRampToValueAtTime(Math.max(1, sweepTo), t0 + duration);
-    amp.gain.setValueAtTime(0.0001, t0);
-    amp.gain.exponentialRampToValueAtTime(Math.max(gain, 0.0002), t0 + attack);
-    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
-    osc.connect(amp).connect(this.sfxGain);
-    osc.start(t0);
-    osc.stop(t0 + duration + 0.02);
-  },
-
-  _noiseBurst({ duration = 0.2, filterFreq = 1200, gain = 0.4, delay = 0 } = {}) {
-    if (!this._ready || !this.enabled.sfx) return;
-    const ctx = this.ctx;
-    const t0 = ctx.currentTime + delay;
-    const src = ctx.createBufferSource();
-    src.buffer = this.noiseBuffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(filterFreq, t0);
-    filter.frequency.exponentialRampToValueAtTime(Math.max(80, filterFreq * 0.2), t0 + duration);
-    const amp = ctx.createGain();
-    amp.gain.setValueAtTime(gain, t0);
-    amp.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
-    src.connect(filter).connect(amp).connect(this.sfxGain);
-    src.start(t0);
-    src.stop(t0 + duration + 0.02);
-  },
-
-  _arp(freqs, { type = 'triangle', step = 0.055, duration = 0.12, gain = 0.28 } = {}) {
-    freqs.forEach((f, i) => this._tone({ freq: f, type, duration, gain, delay: i * step }));
-  },
-
-  // --- Public sound effects ---
-  playJump() { 
-    this._tone({ freq: 280, sweepTo: 720, type: 'triangle', duration: 0.16, gain: 0.24 }); 
-    this._noiseBurst({ duration: 0.04, filterFreq: 600, gain: 0.1 });
-  },
-  
-  playSuperJump() { 
-    this._tone({ freq: 240, sweepTo: 1100, type: 'sawtooth', duration: 0.24, gain: 0.18 }); 
-    this._noiseBurst({ duration: 0.08, filterFreq: 1200, gain: 0.15 });
-  },
-
-  playLand() {
-    this._tone({ freq: 160, sweepTo: 70, type: 'sine', duration: 0.1, gain: 0.28 });
-    this._noiseBurst({ duration: 0.06, filterFreq: 500, gain: 0.15 });
-  },
-  playSpring() { this._tone({ freq: 260, sweepTo: 1100, type: 'square', duration: 0.2, gain: 0.25 }); },
-  playCoin() { this._arp([880, 1318.5], { type: 'triangle', duration: 0.1, gain: 0.25 }); },
-  playGem() { this._arp([740, 988, 1480], { type: 'triangle', duration: 0.12, gain: 0.28 }); },
-  playStar() { this._arp([660, 880, 1100, 1480], { type: 'sine', duration: 0.1, gain: 0.26 }); },
-  playCombo() { this._tone({ freq: 500, sweepTo: 760, type: 'square', duration: 0.09, gain: 0.18 }); },
-
-  playPowerup(kind) {
-    const bases = {
-      shield: 420, doubleCoins: 520, magnet: 300, slowMotion: 220, superJump: 600, speedBoost: 700
+  // --- Boot -----------------------------------------------------------
+  boot() {
+    Storage.load();
+    UI.init();
+    this.setupCanvas();
+    this.resizeStage();
+    const queueResize = () => {
+      if (this._resizeQueued) return;
+      this._resizeQueued = true;
+      requestAnimationFrame(() => { this._resizeQueued = false; this.resizeStage(); });
     };
-    const b = bases[kind] || 440;
-    this._arp([b, b * 1.25, b * 1.5, b * 2], { type: 'triangle', step: 0.06, duration: 0.14, gain: 0.24 });
+    window.addEventListener('resize', queueResize);
+    window.addEventListener('orientationchange', queueResize);
+
+    this.player = new Player();
+    this.platforms = []; this.obstacles = []; this.collectibles = []; this.powerupPickups = [];
+    this.camera = { y: 0 };
+    this.input = { left: false, right: false };
+    this.bgTime = 0;
+    this.clouds = null;
+
+    this.setupInput();
+    UI.renderMenuStats();
+    UI.showScreen('menu');
+
+    this._loopBound = this.loop.bind(this);
+    requestAnimationFrame(this._loopBound);
+
+    if (Storage.isDailyAvailable()) setTimeout(() => UI.openDaily(), 600);
   },
 
-  playShieldHit() {
-    this._tone({ freq: 500, sweepTo: 200, type: 'square', duration: 0.18, gain: 0.3 });
-    this._noiseBurst({ duration: 0.15, filterFreq: 2000, gain: 0.2 });
+  setupCanvas() {
+    this.canvas = document.getElementById('game-canvas');
+    this.ctx = this.canvas.getContext('2d');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    this.pixelScale = dpr;
+    this.canvas.width = Math.round(CONFIG.WORLD_WIDTH * dpr);
+    this.canvas.height = Math.round(CONFIG.VIEW_HEIGHT * dpr);
   },
 
-  playCrack() { this._noiseBurst({ duration: 0.08, filterFreq: 2500, gain: 0.18 }); },
-  playBreak() { this._noiseBurst({ duration: 0.2, filterFreq: 1800, gain: 0.3 }); },
-
-  playExplosion() {
-    this._noiseBurst({ duration: 0.35, filterFreq: 2200, gain: 0.4 });
-    this._tone({ freq: 160, sweepTo: 40, type: 'sawtooth', duration: 0.3, gain: 0.3 });
+  resizeStage() {
+    const wrap = document.getElementById('canvas-wrap');
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const ratio = CONFIG.WORLD_WIDTH / CONFIG.VIEW_HEIGHT;
+    let w = vw, h = vw / ratio;
+    if (h > vh) { h = vh; w = vh * ratio; }
+    wrap.style.width = `${Math.round(w)}px`;
+    wrap.style.height = `${Math.round(h)}px`;
   },
 
-  playGameOver() {
-    this._arp([440, 370, 294, 220], { type: 'sawtooth', step: 0.14, duration: 0.32, gain: 0.28 });
+  // --- Input ------------------------------------------------------------
+  setupInput() {
+    window.addEventListener('keydown', e => {
+      if (e.repeat) return;
+      if (['ArrowLeft', 'KeyA'].includes(e.code)) this.input.left = true;
+      if (['ArrowRight', 'KeyD'].includes(e.code)) this.input.right = true;
+      if (['Space', 'ArrowUp', 'KeyW'].includes(e.code)) { e.preventDefault(); this.player.requestJump(); }
+      if (e.code === 'Escape') {
+        if (this.state === 'playing') this.pauseGame();
+        else if (this.state === 'paused') this.resumeGame();
+      }
+    });
+    window.addEventListener('keyup', e => {
+      if (['ArrowLeft', 'KeyA'].includes(e.code)) this.input.left = false;
+      if (['ArrowRight', 'KeyD'].includes(e.code)) this.input.right = false;
+    });
+
+    this.setupTouchZones();
   },
 
-  playClick() { this._tone({ freq: 1000, type: 'square', duration: 0.045, gain: 0.18 }); },
-  playError() { this._tone({ freq: 220, sweepTo: 150, type: 'square', duration: 0.12, gain: 0.2 }); },
-  playUnlock() { this._arp([523, 659, 784, 1046], { type: 'triangle', step: 0.07, duration: 0.16, gain: 0.28 }); },
+  // Three fixed, fully invisible full-height zones (30% / 40% / 30%) laid
+  // over the canvas: left/right hold to move, middle tap to jump. Built on
+  // the Pointer Events API so touch, mouse and pen all share one code path
+  // (no separate touchstart/mousedown handling) and CSS `touch-action: none`
+  // on the zones (see style.css) does the scroll/zoom suppression for free —
+  // no preventDefault() needed on the hot input path, which keeps the
+  // browser's compositor free to handle touches without blocking on JS.
+  setupTouchZones() {
+    const layer = document.getElementById('touch-controls');
+    if (!layer) return;
+    const zones = layer.querySelectorAll('.touch-zone');
+    const activePointers = new Map(); // pointerId -> zone element
 
-  // --- BGM Controls ---
-  playMenuBGM() {
-    if (!this._ready) return;
-    this.stopBGM();
-    this.activeBGM = this.menuBGM;
-    if (this.activeBGM) {
-      this.activeBGM.volume = 1.0; 
-      if (this.enabled.music) {
-        this.activeBGM.play().catch(e => console.log("Audio interaction deferred:", e));
+    const setHeld = (zoneEl, held) => {
+      const kind = zoneEl.dataset.zone;
+      if (kind === 'left') this.input.left = held;
+      else if (kind === 'right') this.input.right = held;
+    };
+
+    const release = e => {
+      const zoneEl = activePointers.get(e.pointerId);
+      if (!zoneEl) return;
+      activePointers.delete(e.pointerId);
+      setHeld(zoneEl, false);
+    };
+
+    zones.forEach(zoneEl => {
+      zoneEl.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        activePointers.set(e.pointerId, zoneEl);
+        if (zoneEl.dataset.zone === 'mid') this.player.requestJump();
+        else setHeld(zoneEl, true);
+        if (zoneEl.setPointerCapture) { try { zoneEl.setPointerCapture(e.pointerId); } catch (err) {} }
+      });
+      zoneEl.addEventListener('pointerup', release);
+      zoneEl.addEventListener('pointercancel', release);
+    });
+  },
+
+  // --- State transitions ------------------------------------------------
+  startGame() {
+    SoundManager.init(); SoundManager.resume();
+    this.resetRunState();
+    this.state = 'playing';
+    document.body.classList.add('in-game');
+    UI.hideAllScreens();
+    if (Storage.get().settings.music) SoundManager.startMusic();
+  },
+
+  pauseGame() {
+    if (this.state !== 'playing') return;
+    this.state = 'paused';
+    UI.showScreen('pause');
+  },
+
+  resumeGame() {
+    if (this.state !== 'paused') return;
+    this.state = 'playing';
+    UI.hideAllScreens();
+  },
+
+  restartGame() {
+    SoundManager.init(); SoundManager.resume();
+    this.resetRunState();
+    this.state = 'playing';
+    document.body.classList.add('in-game');
+    UI.hideAllScreens();
+    if (Storage.get().settings.music) SoundManager.startMusic();
+  },
+
+  goToMenu() {
+    this.state = 'menu';
+    document.body.classList.remove('in-game');
+    SoundManager.stopMusic();
+    UI.renderMenuStats();
+    UI.showScreen('menu');
+  },
+
+  resetRunState() {
+    this.player.reset();
+    this.platforms = [new Platform('normal', CONFIG.WORLD_WIDTH / 2 - 55, CONFIG.GROUND_Y, 110)];
+    this.obstacles = [];
+    this.collectibles = [];
+    this.powerupPickups = [];
+    this.lastPlatformX = CONFIG.WORLD_WIDTH / 2;
+    this.highestGeneratedY = CONFIG.GROUND_Y;
+    this.camera.y = -(CONFIG.VIEW_HEIGHT - 140);
+    this.dangerY = 220;
+    this.worldRebaseTotal = 0;
+    this.runTime = 0;
+    this.lastMinY = this.player.minY;
+    this.noProgressTimer = 0;
+    this.comboCount = 0; this.comboMultiplier = 1; this.comboTimer = 0;
+    this.runStats = { coinsThisRun: 0, floorThisRun: 0, timeThisRun: 0, powerupsThisRun: 0, gemsThisRun: 0, bestComboThisRun: 1, score: 0 };
+    this.missionCheckTimer = 0;
+    this.deathAnimTimer = 0;
+    PowerupManager.reset();
+    Effects.reset();
+    Storage.ensureDailyMissions();
+    this.ensureGeneration();
+  },
+
+  // --- Procedural generation --------------------------------------------
+  currentFloor() {
+    return Math.max(0, Math.floor((CONFIG.GROUND_Y - this.player.minY + this.worldRebaseTotal) / CONFIG.FLOOR_HEIGHT));
+  },
+
+  ensureGeneration() {
+    const targetTop = this.camera.y - 260;
+    let guard = 0;
+    while (this.highestGeneratedY > targetTop && guard++ < 200) this.spawnBand();
+  },
+
+  spawnBand() {
+    const floor = Math.max(0, Math.floor((CONFIG.GROUND_Y - this.highestGeneratedY + this.worldRebaseTotal) / CONFIG.FLOOR_HEIGHT));
+    const diff = CONFIG.difficultyForFloor(floor);
+    const gap = Utils.randRange(diff.gapMin, diff.gapMax);
+    this.highestGeneratedY -= gap;
+
+    const type = PlatformFactory.pickType(floor);
+    const w = PlatformFactory.widthFor(type);
+    // The previous version reflected the running *center* anchor against a
+    // domain expressed in *left-edge* terms — a coordinate-frame mismatch
+    // that silently shifted every single step further right by half a
+    // platform width, so the walk crept rightward and piled up at the wall
+    // within a couple of spawns. Keeping everything in center-space (both
+    // the anchor and the reflection domain) fixes it for good.
+    const margin = 4;
+    const centerMin = margin + w / 2;
+    const centerMax = CONFIG.WORLD_WIDTH - margin - w / 2;
+    const rawCenter = this.lastPlatformX + Utils.randRange(-diff.xJitter, diff.xJitter);
+    const center = Utils.reflect(rawCenter, centerMin, centerMax);
+    const plat = PlatformFactory.create(type, center - w / 2, this.highestGeneratedY, w);
+    this.lastPlatformX = center;
+    this.platforms.push(plat);
+
+    if (floor > 0 && Utils.chance(diff.obstacleChance)) {
+      const oType = ObstacleFactory.pickType(floor);
+      this.spawnObstacleNear(plat, oType);
+    }
+
+    if (Utils.chance(0.55)) {
+      let kind = 'coin';
+      if (Utils.chance(0.08)) kind = 'gem';
+      else if (Utils.chance(0.06)) kind = 'star';
+      // If a static hazard sits on one edge of this platform, keep the
+      // pickup over the clear side rather than dead-center, so it doesn't
+      // end up baiting the player toward the spikes/fire.
+      const pickupX = plat.hasHazard
+        ? (plat.hazardSide === 'left' ? plat.x + plat.w * 0.78 : plat.x + plat.w * 0.22)
+        : plat.x + plat.w / 2;
+      this.collectibles.push(PickupFactory.createCollectible(kind, pickupX, plat.y - 24));
+    }
+
+    if (Utils.chance(diff.powerupChance)) {
+      const kind = PickupFactory.pickPowerupKind();
+      this.powerupPickups.push(PickupFactory.createPowerup(kind, plat.x + plat.w / 2, plat.y - 42));
+    }
+  },
+
+  spawnObstacleNear(plat, type) {
+    const W = CONFIG.WORLD_WIDTH;
+    switch (type) {
+      case 'fire': {
+        const w = 28;
+        const minSafeZone = 34; // leave enough platform width for a safe landing spot
+        if (plat.w < w + minSafeZone) break; // too narrow to fit a hazard + safe landing — skip this one
+        // Fire is static (it never moves — see Obstacle.update()), so it
+        // needs to visually sit on an actual surface. Anchoring it to one
+        // edge of the platform it was generated next to — leaving the rest
+        // of it clear — reads as an intentional trap rather than an
+        // obstacle floating in the gap with nothing underneath.
+        const edgeLeft = Utils.chance(0.5);
+        const x = edgeLeft ? plat.x + 3 : plat.x + plat.w - w - 3;
+        const y = plat.y - 34;
+        plat.hasHazard = true;
+        plat.hazardSide = edgeLeft ? 'left' : 'right';
+        this.obstacles.push(ObstacleFactory.create('fire', x, y, { w }));
+        break;
+      }
+      case 'geyser': {
+        const footprint = 18;
+        const minSafeZone = 40; // extra room since it still needs a guaranteed-safe landing spot even though the danger itself is only timing-based
+        if (plat.w < footprint + minSafeZone) break;
+        // Unlike the old static icicle (always dangerous, no way to wait
+        // it out), a geyser cycles idle -> telegraph -> active just like
+        // laser — anchoring it to one edge still guarantees a safe strip
+        // to land on even if the timing is missed.
+        const edgeLeft = Utils.chance(0.5);
+        const x = edgeLeft ? plat.x + 12 : plat.x + plat.w - 12;
+        const y = plat.y;
+        plat.hasHazard = true;
+        plat.hazardSide = edgeLeft ? 'left' : 'right';
+        this.obstacles.push(ObstacleFactory.create('geyser', x, y, { height: Utils.randRange(70, 100) }));
+        break;
+      }
+      case 'bat': {
+        const y = plat.y - Utils.randRange(45, 80);
+        const x = Utils.randRange(30, W - 30);
+        this.obstacles.push(ObstacleFactory.create('bat', x, y, { xMin: 20, xMax: W - 20 }));
+        break;
+      }
+      case 'hammer': {
+        const x = Utils.clamp(plat.x + plat.w / 2 + Utils.randRange(-50, 50), 45, W - 45);
+        const y = plat.y - Utils.randRange(55, 85);
+        this.obstacles.push(ObstacleFactory.create('hammer', x, y, { ropeLen: Utils.randRange(45, 70) }));
+        break;
+      }
+      case 'drone': {
+        const y = plat.y - Utils.randRange(48, 75);
+        const x = Utils.randRange(30, W - 30);
+        this.obstacles.push(ObstacleFactory.create('drone', x, y, { xMin: 20, xMax: W - 20 }));
+        break;
+      }
+      case 'laser': {
+        const y = plat.y - Utils.randRange(36, 58);
+        this.obstacles.push(ObstacleFactory.create('laser', 20, y, { laserW: W - 40 }));
+        break;
+      }
+      case 'debris': {
+        const x = Utils.randRange(20, W - 20);
+        const y = plat.y - 260;
+        this.obstacles.push(ObstacleFactory.create('debris', x, y));
+        break;
       }
     }
   },
 
-  playGameplayBGM() {
-    if (!this._ready) return;
-    
-    // If swapping tracks entirely, clean up the old one
-    if (this.activeBGM !== this.gameplayBGM) {
-      this.stopBGM();
-      this.activeBGM = this.gameplayBGM;
+  // --- Per-frame update ---------------------------------------------------
+  updateGameplay(dt, rawDt) {
+    const mods = PowerupManager.getMods();
+    const worldDt = dt * (mods.slowMotion ? CONFIG.POWERUP.SLOW_FACTOR : 1);
+
+    if (this.player.invulnTimer > 0) this.player.invulnTimer -= dt;
+
+    const events = this.player.update(dt, this.input, mods, { platforms: this.platforms });
+
+    if (events.jumped) {
+      SoundManager[mods.superJump ? 'playSuperJump' : 'playJump']();
+      Effects.burst(this.player.x + this.player.w / 2, this.player.y + this.player.h, {
+        count: 9, color: this.getSelectedJumpColor(), speed: 90, size: 4, life: 0.35, gravity: 220, spread: Math.PI * 0.9, angle: Math.PI / 2
+      });
     }
-    
-    if (this.activeBGM) {
-      this.activeBGM.volume = 0.35; 
-      if (this.enabled.music) {
-        this.activeBGM.play().catch(e => console.log("Audio interaction deferred:", e));
+    if (events.landed) this.registerLanding();
+
+    this.player.emitTrail(this.getSelectedTrailColor(), dt);
+
+    for (const p of this.platforms) p.update(worldDt, this.dangerY);
+    for (const o of this.obstacles) o.update(worldDt, this.dangerY);
+    for (const c of this.collectibles) c.update(worldDt, this.dangerY);
+    for (const pu of this.powerupPickups) pu.update(worldDt, this.dangerY);
+
+    // A cracked/breakable platform that just crumbled out from under the
+    // player should send them straight down — not let them quietly touch
+    // down on whatever solid platform happens to sit below it.
+    if (this.player.onGround && this.player.groundPlatform && this.player.groundPlatform.broken) {
+      this.player.hazardFalling = true;
+      this.player.onGround = false;
+      this.player.groundPlatform = null;
+    }
+
+    PowerupManager.applyMagnet(this.player, this.collectibles, dt);
+    PowerupManager.update(dt);
+
+    this.runTime += dt;
+    if (this.runTime > CONFIG.DANGER.START_DELAY) {
+      const diff = CONFIG.difficultyForFloor(this.currentFloor());
+      let rise = diff.riseSpeed;
+      this.noProgressTimer = (this.player.minY < this.lastMinY - 1) ? 0 : this.noProgressTimer + dt;
+      if (this.noProgressTimer > 3) rise *= CONFIG.DANGER.CATCHUP_BONUS;
+
+      // Keep the crusher from lagging off-screen for long stretches during
+      // a fast climb: once the gap to the player exceeds a comfortable
+      // leash distance, pull it back in proportion to how far behind it's
+      // fallen, so it stays a visible, looming threat instead of vanishing.
+      const gap = this.dangerY - this.player.y;
+      const maxGap = CONFIG.VIEW_HEIGHT * CONFIG.DANGER.LEASH_SCREENS;
+      if (gap > maxGap) rise += (gap - maxGap) * CONFIG.DANGER.LEASH_PULL;
+      rise = Math.min(rise, CONFIG.DANGER.MAX_TOTAL_RISE_SPEED);
+
+      this.dangerY -= rise * worldDt;
+    }
+    this.lastMinY = this.player.minY;
+
+    if (this.player.alive && !(this.player.invulnTimer > 0)) {
+      const box = { x: this.player.x + 4, y: this.player.y + 4, w: this.player.w - 8, h: this.player.h - 8 };
+      for (const o of this.obstacles) {
+        if (o.dead) continue;
+        if (o.hits(box)) { this.handleHazardHit(o); break; }
       }
     }
+
+    if (this.player.alive) {
+      const box = { x: this.player.x, y: this.player.y, w: this.player.w, h: this.player.h };
+      for (const c of this.collectibles) {
+        if (c.dead || c.collected) continue;
+        if (Utils.aabbOverlap(box, c.hitbox())) this.collect(c);
+      }
+      for (const pu of this.powerupPickups) {
+        if (pu.dead || pu.collected) continue;
+        if (Utils.aabbOverlap(box, pu.hitbox())) this.collectPowerup(pu);
+      }
+    }
+
+    if (this.comboCount > 0) {
+      this.comboTimer -= dt;
+      if (this.comboTimer <= 0) { this.comboCount = 0; this.updateComboMultiplier(); }
+    }
+
+    if (this.player.alive) {
+      if (this.player.y + this.player.h >= this.dangerY) this.handleDeath('crushed');
+      // Once the player has fully left the visible screen (top of the
+      // sprite past the bottom edge, with only a small grace buffer) the
+      // run ends — no lingering off-screen fall.
+      else if (this.player.y > this.camera.y + CONFIG.VIEW_HEIGHT + 16) this.handleDeath('fell');
+    } else {
+      this.deathAnimTimer += dt;
+      if (this.deathAnimTimer > 0.9 && this.state === 'playing') this.finalizeRun();
+    }
+
+    this.updateCamera(dt);
+    this.rebaseWorldIfNeeded();
+    this.ensureGeneration();
+    this.cleanup();
+    Effects.update(dt);
+
+    this.missionCheckTimer += dt;
+    if (this.missionCheckTimer > 0.5) {
+      this.missionCheckTimer = 0;
+      this.runStats.timeThisRun = this.runTime;
+      this.runStats.floorThisRun = this.currentFloor();
+      if (Storage.updateMissionProgress(this.runStats)) {
+        UI.flashMissionToast('Mission complete!');
+        SoundManager.playUnlock();
+      }
+    }
+
+    UI.updateHUD({
+      floor: this.currentFloor(),
+      coins: this.runStats.coinsThisRun,
+      comboMultiplier: this.comboMultiplier,
+      comboFrac: this.comboCount > 0 ? Utils.clamp(this.comboTimer / CONFIG.COMBO.WINDOW, 0, 1) : 0,
+      seconds: this.runTime,
+      powerups: PowerupManager.getHudList()
+    });
   },
 
-  pauseBGM() {
-    if (this.activeBGM) this.activeBGM.pause();
+  updateCamera(dt) {
+    const targetY = this.player.y - CONFIG.VIEW_HEIGHT * 0.62;
+    const damped = Utils.damp(this.camera.y, targetY, 6, dt);
+    this.camera.y = Math.min(this.camera.y, damped);
   },
 
-  stopBGM() {
-    if (this.menuBGM) { this.menuBGM.pause(); this.menuBGM.currentTime = 0; }
-    if (this.gameplayBGM) { this.gameplayBGM.pause(); this.gameplayBGM.currentTime = 0; }
-    this.activeBGM = null;
+  // --- Floating origin ---------------------------------------------------
+  // camera.y (and every other world y-coordinate) only ever grows more
+  // negative the higher the player climbs, with no ceiling. Once those
+  // numbers get into the tens/hundreds of thousands, some GPU-accelerated
+  // canvas compositing paths lose sub-pixel precision on the translate
+  // applied every frame — a well-known source of visible shimmer/jitter at
+  // large coordinates that has nothing to do with frame rate. Periodically
+  // shifting every world y-coordinate back toward zero together (a
+  // "floating origin") keeps the numbers small indefinitely. Because every
+  // coordinate moves by the exact same amount in the same frame, nothing
+  // about relative positions, physics, or what's on screen changes at all
+  // — worldRebaseTotal tracks the cumulative shift so floor/score math
+  // (which compares against the fixed CONFIG.GROUND_Y) stays correct.
+  rebaseWorldIfNeeded() {
+    const REBASE_THRESHOLD = 20000;
+    if (this.camera.y > -REBASE_THRESHOLD) return;
+    const shift = REBASE_THRESHOLD;
+
+    this.camera.y += shift;
+    this.dangerY += shift;
+    this.highestGeneratedY += shift;
+    this.lastMinY += shift;
+    this.player.y += shift;
+    this.player.minY += shift;
+    this.worldRebaseTotal += shift;
+
+    for (const p of this.platforms) p.y += shift;
+    for (const o of this.obstacles) {
+      o.y += shift;
+      if (o.anchorY !== undefined) o.anchorY += shift;
+    }
+    for (const c of this.collectibles) c.y += shift;
+    for (const pu of this.powerupPickups) pu.y += shift;
+    for (const particle of Effects.particlePool.active) particle.y += shift;
+    for (const text of Effects.textPool.active) text.y += shift;
+  },
+
+  cleanup() {
+    removeDead(this.platforms);
+    removeDead(this.obstacles);
+    removeDead(this.collectibles);
+    removeDead(this.powerupPickups);
+  },
+
+  registerLanding() {
+    this.comboCount++;
+    this.comboTimer = CONFIG.COMBO.WINDOW;
+    const prevMult = this.comboMultiplier;
+    this.updateComboMultiplier();
+    if (this.comboMultiplier > prevMult) {
+      Effects.floatText(this.player.x + this.player.w / 2, this.player.y - 10, `x${this.comboMultiplier.toFixed(1)} combo!`, { color: '#ffd23f', size: 15 });
+      SoundManager.playCombo();
+    }
+    this.runStats.bestComboThisRun = Math.max(this.runStats.bestComboThisRun, this.comboMultiplier);
+  },
+
+  updateComboMultiplier() {
+    const tier = Math.floor(this.comboCount / CONFIG.COMBO.PER_TIER);
+    this.comboMultiplier = Math.min(CONFIG.COMBO.BASE_MULTIPLIER + tier * CONFIG.COMBO.STEP, CONFIG.COMBO.MAX_MULTIPLIER);
+  },
+
+  collect(c) {
+    c.collected = true; c.dead = true;
+    const mods = PowerupManager.getMods();
+    const mult = mods.doubleCoins ? 2 : 1;
+    if (c.kind === 'coin') {
+      const amount = Math.max(1, Math.round(CONFIG.COLLECTIBLE.COIN_VALUE * this.comboMultiplier * mult));
+      this.runStats.coinsThisRun += amount;
+      Effects.floatText(c.x, c.y, `+${amount}`, { color: '#ffd23f' });
+      Effects.sparkle(c.x, c.y, '#ffd23f');
+      SoundManager.playCoin();
+    } else if (c.kind === 'gem') {
+      const amount = Math.max(1, Math.round(CONFIG.COLLECTIBLE.GEM_VALUE * this.comboMultiplier * mult));
+      this.runStats.coinsThisRun += amount;
+      this.runStats.gemsThisRun++;
+      Effects.floatText(c.x, c.y, `+${amount}`, { color: '#4fd8ff' });
+      Effects.sparkle(c.x, c.y, '#4fd8ff');
+      SoundManager.playGem();
+    } else {
+      this.comboCount += CONFIG.COLLECTIBLE.STAR_COMBO_BOOST;
+      this.comboTimer = CONFIG.COMBO.WINDOW;
+      this.updateComboMultiplier();
+      Effects.floatText(c.x, c.y, 'Combo!', { color: '#ffe98a' });
+      Effects.sparkle(c.x, c.y, '#ffe98a');
+      SoundManager.playStar();
+    }
+  },
+
+  collectPowerup(pu) {
+    pu.collected = true; pu.dead = true;
+    PowerupManager.activate(pu.kind);
+    this.runStats.powerupsThisRun++;
+    const color = POWERUP_ICON_COLOR[pu.kind] || '#fff';
+    Effects.floatText(pu.x, pu.y, POWERUP_LABEL[pu.kind] || 'Power up!', { color });
+    Effects.burst(pu.x, pu.y, { count: 14, color, speed: 160, size: 4, life: 0.4, glow: true });
+  },
+
+  handleHazardHit(obstacle) {
+    if (PowerupManager.consumeShield()) {
+      Effects.burst(this.player.x + this.player.w / 2, this.player.y + this.player.h / 2, { count: 14, color: '#4fd8ff', speed: 180, size: 4, life: 0.4, glow: true });
+      Effects.addShake(0.35);
+      SoundManager.playShieldHit();
+      if (obstacle.type === 'bat' || obstacle.type === 'debris') obstacle.dead = true;
+      this.player.invulnTimer = 0.6;
+    } else {
+      this.handleDeath('obstacle');
+    }
+  },
+
+  handleDeath(reason) {
+    if (!this.player.alive) return;
+    this.player.die(reason);
+    this.deathAnimTimer = 0;
+    Effects.addShake(0.9);
+    Effects.triggerHitStop(0.07);
+    Effects.flash(reason === 'crushed' ? '#ff3d81' : '#1b1330', 0.55);
+    Effects.explosionBurst(this.player.x + this.player.w / 2, this.player.y + this.player.h / 2);
+    SoundManager.playExplosion();
+    SoundManager.stopMusic();
+  },
+
+  finalizeRun() {
+    this.state = 'gameover';
+    document.body.classList.remove('in-game');
+    this.runStats.floorThisRun = this.currentFloor();
+    this.runStats.timeThisRun = this.runTime;
+    this.runStats.score = this.runStats.floorThisRun * 12 + this.runStats.coinsThisRun;
+    Storage.updateMissionProgress(this.runStats);
+    const best = Storage.submitRunResult({
+      score: this.runStats.score, floor: this.runStats.floorThisRun,
+      combo: this.runStats.bestComboThisRun, coinsCollected: this.runStats.coinsThisRun, seconds: this.runTime
+    });
+    Storage.addCoins(this.runStats.coinsThisRun);
+    SoundManager.playGameOver();
+    UI.populateGameOver(this.runStats, best);
+    UI.showScreen('gameover');
+  },
+
+  // --- Selected progression lookups --------------------------------------
+  getSelectedSkin() {
+    const id = Storage.get().selected.skin;
+    return CONFIG.SKINS.find(s => s.id === id) || CONFIG.SKINS[0];
+  },
+  getSelectedTrailColor() {
+    const id = Storage.get().selected.trail;
+    const t = CONFIG.TRAILS.find(t => t.id === id);
+    return t ? t.color : null;
+  },
+  getSelectedJumpColor() {
+    const id = Storage.get().selected.jumpFx;
+    const j = CONFIG.JUMP_FX.find(j => j.id === id);
+    return j ? j.color : '#ffffff';
+  },
+  getSelectedTheme() {
+    const id = Storage.get().selected.theme;
+    return CONFIG.THEMES.find(t => t.id === id) || CONFIG.THEMES[0];
+  },
+
+  // --- Main loop --------------------------------------------------------
+  loop(now) {
+    requestAnimationFrame(this._loopBound);
+    if (!this.lastTime) this.lastTime = now;
+    let rawDt = (now - this.lastTime) / 1000;
+    this.lastTime = now;
+    rawDt = Math.min(rawDt, 0.05);
+    this.bgTime += rawDt;
+
+    if (this.state === 'playing') {
+      const timeScale = Effects.consumeHitStop(rawDt);
+      const dt = rawDt * timeScale;
+      this.updateGameplay(dt, rawDt);
+    }
+    this.render();
+  },
+
+  // --- Rendering ----------------------------------------------------------
+  render() {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(this.pixelScale, 0, 0, this.pixelScale, 0, 0);
+    ctx.clearRect(0, 0, CONFIG.WORLD_WIDTH, CONFIG.VIEW_HEIGHT);
+
+    const active = this.state === 'playing' || this.state === 'paused' || this.state === 'gameover';
+    const shake = active ? Effects.getShakeOffset() : { x: 0, y: 0, rot: 0 };
+
+    ctx.save();
+    ctx.translate(shake.x, shake.y);
+    ctx.rotate(shake.rot);
+
+    this.drawBackground();
+
+    if (active) {
+      ctx.save();
+      ctx.translate(0, -this.camera.y);
+      this.drawTowerWalls();
+      this.drawDangerFloor();
+      for (const p of this.platforms) p.draw(ctx);
+      for (const o of this.obstacles) o.draw(ctx);
+      for (const c of this.collectibles) c.draw(ctx);
+      for (const pu of this.powerupPickups) pu.draw(ctx);
+      Effects.drawParticles(ctx);
+      if (this.player.alive || this.player.deathTimer < 1.2) {
+        this.player.draw(ctx, this.getSelectedSkin());
+      }
+      Effects.drawFloatingTexts(ctx);
+      ctx.restore();
+    }
+
+    ctx.restore(); // pop shake
+
+    Effects.drawFlash(ctx, CONFIG.WORLD_WIDTH, CONFIG.VIEW_HEIGHT);
+    ctx.restore(); // pop pixelScale
+  },
+
+  drawBackground() {
+    const ctx = this.ctx;
+    const theme = this.getSelectedTheme();
+    // The gradient only actually changes when the equipped theme changes, so
+    // rebuild it only then rather than allocating a fresh CanvasGradient on
+    // every single frame.
+    if (!this._skyGradCache || this._skyGradCache.id !== theme.id) {
+      const g = ctx.createLinearGradient(0, 0, 0, CONFIG.VIEW_HEIGHT);
+      g.addColorStop(0, theme.sky[0]); g.addColorStop(0.55, theme.sky[1]); g.addColorStop(1, theme.sky[2]);
+      this._skyGradCache = { id: theme.id, gradient: g };
+    }
+    ctx.fillStyle = this._skyGradCache.gradient;
+    ctx.fillRect(0, 0, CONFIG.WORLD_WIDTH, CONFIG.VIEW_HEIGHT);
+
+    if (!this.clouds) {
+      this.clouds = Array.from({ length: 8 }, (_, i) => ({
+        x: Math.random() * CONFIG.WORLD_WIDTH,
+        y: 40 + Math.random() * (CONFIG.VIEW_HEIGHT - 80),
+        r: Utils.randRange(24, 48),
+        speed: Utils.randRange(6, 16) * (i % 2 === 0 ? 1 : -1),
+        alpha: Utils.randRange(0.16, 0.36)
+      }));
+    }
+    for (const c of this.clouds) {
+      let x = (c.x + this.bgTime * c.speed) % (CONFIG.WORLD_WIDTH + 140);
+      if (x < 0) x += CONFIG.WORLD_WIDTH + 140;
+      x -= 70;
+      ctx.globalAlpha = c.alpha;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(x, c.y, c.r, c.r * 0.45, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + c.r * 0.5, c.y + 4, c.r * 0.6, c.r * 0.35, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  },
+
+  drawTowerWalls() {
+    const ctx = this.ctx;
+    const topY = this.camera.y - 40, botY = this.camera.y + CONFIG.VIEW_HEIGHT + 320;
+    const wallW = 14;
+    ctx.fillStyle = 'rgba(10,6,26,0.55)';
+    ctx.fillRect(-wallW, topY, wallW, botY - topY);
+    ctx.fillRect(CONFIG.WORLD_WIDTH, topY, wallW, botY - topY);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    const step = 40;
+    const start = Math.floor(topY / step) * step;
+    for (let y = start; y < botY; y += step) {
+      ctx.beginPath(); ctx.moveTo(-wallW, y); ctx.lineTo(0, y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(CONFIG.WORLD_WIDTH, y); ctx.lineTo(CONFIG.WORLD_WIDTH + wallW, y); ctx.stroke();
+    }
+  },
+
+  drawDangerFloor() {
+    const ctx = this.ctx;
+    const y = this.dangerY;
+    const bottom = y + 420;
+    const grad = ctx.createLinearGradient(0, y - 30, 0, y + 40);
+    grad.addColorStop(0, 'rgba(255,61,129,0)');
+    grad.addColorStop(0.5, 'rgba(255,61,129,0.85)');
+    grad.addColorStop(1, '#ff3d81');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, y - 30, CONFIG.WORLD_WIDTH, bottom - (y - 30));
+
+    ctx.save();
+    ctx.shadowColor = '#ff3d81'; ctx.shadowBlur = 20;
+    ctx.fillStyle = '#ffdce8';
+    ctx.fillRect(0, y - 4, CONFIG.WORLD_WIDTH, 4);
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#ffffff';
+    const stripeW = 26, offset = (this.bgTime * 40) % (stripeW * 2);
+    for (let x = -stripeW * 2 + offset; x < CONFIG.WORLD_WIDTH + stripeW; x += stripeW * 2) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + 6); ctx.lineTo(x + stripeW, y + 6); ctx.lineTo(x + stripeW * 0.5, y + 18);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    if (this.state === 'playing' && Utils.chance(0.3)) {
+      Effects.burst(Utils.randRange(0, CONFIG.WORLD_WIDTH), y, {
+        count: 1, color: ['#ffd23f', '#ffffff'], speed: 60, size: 2, life: 0.4, gravity: -40, spread: Math.PI, angle: -Math.PI / 2, glow: true
+      });
+    }
   }
 };
 
-if (typeof window !== 'undefined') window.SoundManager = SoundManager;
+if (typeof window !== 'undefined') {
+  window.Game = Game;
+  window.addEventListener('DOMContentLoaded', () => Game.boot());
+}
